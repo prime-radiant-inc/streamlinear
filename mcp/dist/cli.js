@@ -3836,7 +3836,7 @@ ZodNaN.create = (params) => {
     ...processCreateParams(params)
   });
 };
-var BRAND = /* @__PURE__ */ Symbol("zod_brand");
+var BRAND = Symbol("zod_brand");
 var ZodBranded = class extends ZodType {
   _parse(input) {
     const { ctx } = this._processInputParams(input);
@@ -4038,14 +4038,14 @@ var ostring = () => stringType().optional();
 var onumber = () => numberType().optional();
 var oboolean = () => booleanType().optional();
 var coerce = {
-  string: ((arg) => ZodString.create({ ...arg, coerce: true })),
-  number: ((arg) => ZodNumber.create({ ...arg, coerce: true })),
-  boolean: ((arg) => ZodBoolean.create({
+  string: (arg) => ZodString.create({ ...arg, coerce: true }),
+  number: (arg) => ZodNumber.create({ ...arg, coerce: true }),
+  boolean: (arg) => ZodBoolean.create({
     ...arg,
     coerce: true
-  })),
-  bigint: ((arg) => ZodBigInt.create({ ...arg, coerce: true })),
-  date: ((arg) => ZodDate.create({ ...arg, coerce: true }))
+  }),
+  bigint: (arg) => ZodBigInt.create({ ...arg, coerce: true }),
+  date: (arg) => ZodDate.create({ ...arg, coerce: true })
 };
 var NEVER = INVALID;
 
@@ -4079,8 +4079,10 @@ async function graphql(query, variables = {}) {
 }
 function resolveId(input) {
   const urlMatch = input.match(/linear\.app\/[^/]+\/issue\/([A-Z]+-\d+)/i);
-  if (urlMatch) return urlMatch[1];
-  if (/^[A-Z]+-\d+$/i.test(input)) return input.toUpperCase();
+  if (urlMatch)
+    return urlMatch[1];
+  if (/^[A-Z]+-\d+$/i.test(input))
+    return input.toUpperCase();
   return input;
 }
 function formatIssue(issue) {
@@ -4088,16 +4090,20 @@ function formatIssue(issue) {
     `**${issue.identifier}**: ${issue.title}`,
     `State: ${issue.state?.name || "Unknown"} | Priority: ${priorityName(issue.priority)} | Assignee: ${issue.assignee?.name || "Unassigned"}`
   ];
-  if (issue.dueDate) lines.push(`Due: ${issue.dueDate}`);
-  if (issue.description) lines.push("", issue.description);
-  if (issue.url) lines.push("", `Link: ${issue.url}`);
+  if (issue.dueDate)
+    lines.push(`Due: ${issue.dueDate}`);
+  if (issue.description)
+    lines.push("", issue.description);
+  if (issue.url)
+    lines.push("", `Link: ${issue.url}`);
   return lines.join("\n");
 }
 function priorityName(p) {
   return ["No priority", "Urgent", "High", "Medium", "Low"][p] || "Unknown";
 }
 function formatIssueList(issues) {
-  if (issues.length === 0) return "No issues found.";
+  if (issues.length === 0)
+    return "No issues found.";
   return issues.map((issue) => {
     const state = issue.state?.name || "?";
     const priority = priorityName(issue.priority);
@@ -4108,13 +4114,15 @@ function formatIssueList(issues) {
 var cachedViewer = null;
 var cachedTeams = null;
 async function getViewer() {
-  if (cachedViewer) return cachedViewer;
+  if (cachedViewer)
+    return cachedViewer;
   const data = await graphql(`query { viewer { id name email } }`);
   cachedViewer = data.viewer;
   return cachedViewer;
 }
 async function getTeams() {
-  if (cachedTeams) return cachedTeams;
+  if (cachedTeams)
+    return cachedTeams;
   const data = await graphql(`
     query {
       teams {
@@ -4130,26 +4138,62 @@ async function getTeams() {
   cachedTeams = data.teams.nodes;
   return cachedTeams;
 }
+var cachedLabels = null;
+async function getWorkspaceLabels() {
+  if (cachedLabels)
+    return cachedLabels;
+  const data = await graphql(`
+    query { issueLabels(first: 250) { nodes { id name } } } // TODO: paginate if >250 labels
+  `);
+  cachedLabels = data.issueLabels.nodes;
+  return cachedLabels;
+}
+async function resolveLabels(names) {
+  if (names.length === 0)
+    return { ids: [] };
+  const resolve = (allLabels) => {
+    const ids = [];
+    const missing = [];
+    for (const name of names) {
+      const match = allLabels.find((l) => l.name.toLowerCase() === name.toLowerCase());
+      if (match)
+        ids.push(match.id);
+      else
+        missing.push(name);
+    }
+    return missing.length > 0 ? { missing } : { ids: [...new Set(ids)] };
+  };
+  const first = resolve(await getWorkspaceLabels());
+  if ("ids" in first)
+    return first;
+  cachedLabels = null;
+  const second = resolve(await getWorkspaceLabels());
+  return second;
+}
 async function resolveState(teamId, stateName) {
   const teams = await getTeams();
   const team = teams.find((t) => t.id === teamId);
-  if (!team) return null;
+  if (!team)
+    return null;
   const states = team.states.nodes;
   const lower = stateName.toLowerCase();
   let match = states.find((s) => s.name.toLowerCase() === lower);
-  if (match) return match.id;
+  if (match)
+    return match.id;
   match = states.find((s) => s.name.toLowerCase().includes(lower));
-  if (match) return match.id;
+  if (match)
+    return match.id;
   const aliases = {
-    "done": ["done", "complete", "completed", "finished"],
+    done: ["done", "complete", "completed", "finished"],
     "in progress": ["in progress", "started", "doing", "wip", "in prog"],
-    "todo": ["todo", "to do", "backlog", "open"],
-    "canceled": ["canceled", "cancelled", "closed", "wontfix"]
+    todo: ["todo", "to do", "backlog", "open"],
+    canceled: ["canceled", "cancelled", "closed", "wontfix"]
   };
   for (const [canonical, alts] of Object.entries(aliases)) {
     if (alts.includes(lower)) {
       match = states.find((s) => s.name.toLowerCase().includes(canonical));
-      if (match) return match.id;
+      if (match)
+        return match.id;
     }
   }
   return null;
@@ -4167,7 +4211,8 @@ async function handleSearch(query) {
   if (!query) {
     filter = `filter: { assignee: { id: { eq: "${viewer.id}" } }, state: { type: { nin: ["completed", "canceled"] } } }`;
   } else if (typeof query === "string") {
-    const data2 = await graphql(`
+    const data2 = await graphql(
+      `
       query($term: String!) {
         searchIssues(term: $term, first: 20) {
           nodes {
@@ -4175,7 +4220,9 @@ async function handleSearch(query) {
           }
         }
       }
-    `, { term: query });
+    `,
+      { term: query }
+    );
     return formatIssueList(data2.searchIssues.nodes);
   } else {
     const filters = [];
@@ -4192,7 +4239,8 @@ async function handleSearch(query) {
     }
     if (query.team) {
       const team = await resolveTeam(query.team);
-      if (team) filters.push(`team: { id: { eq: "${team.id}" } }`);
+      if (team)
+        filters.push(`team: { id: { eq: "${team.id}" } }`);
     }
     if (filters.length > 0) {
       filter = `filter: { ${filters.join(", ")} }`;
@@ -4211,7 +4259,8 @@ async function handleSearch(query) {
 }
 async function handleGet(id) {
   const resolved = resolveId(id);
-  const data = await graphql(`
+  const data = await graphql(
+    `
     query($id: String!) {
       issue(id: $id) {
         id identifier title description state { name } priority
@@ -4224,32 +4273,36 @@ async function handleGet(id) {
         }
       }
     }
-  `, { id: resolved });
+  `,
+    { id: resolved }
+  );
   if (!data.issue) {
     return `Issue ${id} not found`;
   }
   const issue = data.issue;
   const labels = (issue.labels?.nodes || []).map((l) => l.name).join(", ");
   let result = formatIssue(issue);
-  if (labels) result += `
+  if (labels)
+    result += `
 Labels: ${labels}`;
   const comments = issue.comments?.nodes || [];
   if (comments.length > 0) {
     result += "\n\n## Recent Comments\n";
-    result += comments.map(
-      (c) => `**${c.user?.name}** (${c.createdAt}):
-${c.body}`
-    ).join("\n\n");
+    result += comments.map((c) => `**${c.user?.name}** (${c.createdAt}):
+${c.body}`).join("\n\n");
   }
   return result;
 }
 async function handleUpdate(id, updates) {
   const resolved = resolveId(id);
-  const issueData = await graphql(`
+  const issueData = await graphql(
+    `
     query($id: String!) {
       issue(id: $id) { id team { id } }
     }
-  `, { id: resolved });
+  `,
+    { id: resolved }
+  );
   if (!issueData.issue) {
     return `Issue ${id} not found`;
   }
@@ -4288,43 +4341,66 @@ async function handleUpdate(id, updates) {
       }
     }
   }
+  if (updates.labels !== void 0) {
+    const result = await resolveLabels(updates.labels);
+    if ("missing" in result) {
+      const allLabels = await getWorkspaceLabels();
+      return `Labels not found: ${result.missing.join(", ")}. Available: ${allLabels.map((l) => l.name).join(", ")}`;
+    }
+    input.labelIds = result.ids;
+  }
   if (Object.keys(input).length === 0) {
     return "No updates provided";
   }
-  const updateResult = await graphql(`
+  const updateResult = await graphql(
+    `
     mutation($id: String!, $input: IssueUpdateInput!) {
       issueUpdate(id: $id, input: $input) {
         success
-        issue { identifier title state { name } priority assignee { name } }
+        issue { identifier title state { name } priority assignee { name } labels { nodes { name } } }
       }
     }
-  `, { id: issueData.issue.id, input });
+  `,
+    { id: issueData.issue.id, input }
+  );
   const issue = updateResult.issueUpdate.issue;
   const changes = [];
-  if (updates.state) changes.push(`state \u2192 ${issue.state?.name}`);
-  if (updates.priority !== void 0) changes.push(`priority \u2192 ${priorityName(issue.priority)}`);
+  if (updates.state)
+    changes.push(`state \u2192 ${issue.state?.name}`);
+  if (updates.priority !== void 0)
+    changes.push(`priority \u2192 ${priorityName(issue.priority)}`);
   if (updates.assignee !== void 0) {
     changes.push(`assignee \u2192 ${issue.assignee?.name || "Unassigned"}`);
+  }
+  if (updates.labels !== void 0) {
+    const labelNames = (issue.labels?.nodes || []).map((l) => l.name).join(", ");
+    changes.push(`labels \u2192 ${labelNames || "(none)"}`);
   }
   return `Updated ${issue.identifier}: ${changes.join(", ")}`;
 }
 async function handleComment(id, body) {
   const resolved = resolveId(id);
-  const issueData = await graphql(`
+  const issueData = await graphql(
+    `
     query($id: String!) {
       issue(id: $id) { id identifier }
     }
-  `, { id: resolved });
+  `,
+    { id: resolved }
+  );
   if (!issueData.issue) {
     return `Issue ${id} not found`;
   }
-  await graphql(`
+  await graphql(
+    `
     mutation($issueId: String!, $body: String!) {
       commentCreate(input: { issueId: $issueId, body: $body }) {
         success
       }
     }
-  `, { issueId: issueData.issue.id, body });
+  `,
+    { issueId: issueData.issue.id, body }
+  );
   const truncated = body.length > 100 ? body.slice(0, 100) + "..." : body;
   return `Added comment to ${issueData.issue.identifier}:
 > ${truncated}`;
@@ -4340,16 +4416,29 @@ async function handleCreate(title, team, options) {
     title,
     teamId: teamData.id
   };
-  if (options.body) input.description = options.body;
-  if (options.priority !== void 0) input.priority = options.priority;
-  const data = await graphql(`
+  if (options.body)
+    input.description = options.body;
+  if (options.priority !== void 0)
+    input.priority = options.priority;
+  if (options.labels && options.labels.length > 0) {
+    const result = await resolveLabels(options.labels);
+    if ("missing" in result) {
+      const allLabels = await getWorkspaceLabels();
+      return `Labels not found: ${result.missing.join(", ")}. Available: ${allLabels.map((l) => l.name).join(", ")}`;
+    }
+    input.labelIds = result.ids;
+  }
+  const data = await graphql(
+    `
     mutation($input: IssueCreateInput!) {
       issueCreate(input: $input) {
         success
         issue { identifier title url }
       }
     }
-  `, { input });
+  `,
+    { input }
+  );
   const issue = data.issueCreate.issue;
   return `Created ${issue.identifier}: ${issue.title}
 ${issue.url}`;
@@ -4486,10 +4575,14 @@ async function main() {
           result = await handleSearch(positional.join(" "));
         } else if (Object.keys(flags).length > 0) {
           const query = {};
-          if (flags.state) query.state = flags.state;
-          if (flags.assignee) query.assignee = flags.assignee;
-          if (flags.priority) query.priority = parseInt(flags.priority, 10);
-          if (flags.team) query.team = flags.team;
+          if (flags.state)
+            query.state = flags.state;
+          if (flags.assignee)
+            query.assignee = flags.assignee;
+          if (flags.priority)
+            query.priority = parseInt(flags.priority, 10);
+          if (flags.team)
+            query.team = flags.team;
           result = await handleSearch(query);
         } else {
           result = await handleSearch();
@@ -4514,8 +4607,10 @@ async function main() {
           process.exit(1);
         }
         const updates = {};
-        if (flags.state) updates.state = flags.state;
-        if (flags.priority) updates.priority = parseInt(flags.priority, 10);
+        if (flags.state)
+          updates.state = flags.state;
+        if (flags.priority)
+          updates.priority = parseInt(flags.priority, 10);
         if (flags.assignee !== void 0) {
           updates.assignee = flags.assignee === "null" ? null : flags.assignee;
         }
@@ -4547,8 +4642,10 @@ async function main() {
           process.exit(1);
         }
         const options = {};
-        if (flags.body) options.body = flags.body;
-        if (flags.priority) options.priority = parseInt(flags.priority, 10);
+        if (flags.body)
+          options.body = flags.body;
+        if (flags.priority)
+          options.priority = parseInt(flags.priority, 10);
         result = await handleCreate(title, team, options);
         break;
       }
