@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,56 +46,60 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
-mkdirSync(packDestination, { recursive: true });
-mkdirSync(consumer, { recursive: true });
+try {
+  mkdirSync(packDestination, { recursive: true });
+  mkdirSync(consumer, { recursive: true });
 
-const packResult = run("npm", ["pack", "--json", "--pack-destination", packDestination]);
-const [pack] = JSON.parse(packResult.stdout);
-assert.ok(pack, "npm pack must return package metadata");
+  const packResult = run("npm", ["pack", "--json", "--pack-destination", packDestination]);
+  const [pack] = JSON.parse(packResult.stdout);
+  assert.ok(pack, "npm pack must return package metadata");
 
-const packedFiles = pack.files.map((file) => file.path).sort();
-const sortedExpectedFiles = [...expectedFiles].sort();
-const missingFiles = sortedExpectedFiles.filter((file) => !packedFiles.includes(file));
-const unexpectedFiles = packedFiles.filter((file) => !sortedExpectedFiles.includes(file));
-assert.deepEqual(
-  packedFiles,
-  sortedExpectedFiles,
-  `packed files must match release allowlist; missing=${missingFiles.join(",") || "none"} unexpected=${unexpectedFiles.join(",") || "none"}`,
-);
+  const packedFiles = pack.files.map((file) => file.path).sort();
+  const sortedExpectedFiles = [...expectedFiles].sort();
+  const missingFiles = sortedExpectedFiles.filter((file) => !packedFiles.includes(file));
+  const unexpectedFiles = packedFiles.filter((file) => !sortedExpectedFiles.includes(file));
+  assert.deepEqual(
+    packedFiles,
+    sortedExpectedFiles,
+    `packed files must match release allowlist; missing=${missingFiles.join(",") || "none"} unexpected=${unexpectedFiles.join(",") || "none"}`,
+  );
 
-const tarball = resolve(packDestination, pack.filename);
-writeFileSync(resolve(consumer, "package.json"), '{"private":true,"type":"module"}\n');
-run("npm", ["install", tarball], { cwd: consumer });
+  const tarball = resolve(packDestination, pack.filename);
+  writeFileSync(resolve(consumer, "package.json"), '{"private":true,"type":"module"}\n');
+  run("npm", ["install", tarball], { cwd: consumer });
 
-const installedRoot = resolve(consumer, "node_modules/@primeradianthq/streamlinear");
-const installedPackage = readJson(resolve(installedRoot, "package.json"));
-const installedMcpPackage = readJson(resolve(installedRoot, "mcp/package.json"));
+  const installedRoot = resolve(consumer, "node_modules/@primeradianthq/streamlinear");
+  const installedPackage = readJson(resolve(installedRoot, "package.json"));
+  const installedMcpPackage = readJson(resolve(installedRoot, "mcp/package.json"));
 
-assert.deepEqual(installedPackage.bin, {
-  streamlinear: "mcp/dist/index.js",
-  "streamlinear-cli": "mcp/dist/cli.js",
-});
-assert.equal(installedMcpPackage.type, "module");
+  assert.deepEqual(installedPackage.bin, {
+    streamlinear: "mcp/dist/index.js",
+    "streamlinear-cli": "mcp/dist/cli.js",
+  });
+  assert.equal(installedMcpPackage.type, "module");
 
-const cliResult = run(resolve(consumer, "node_modules/.bin/streamlinear-cli"), ["help"], {
-  cwd: consumer,
-});
-assert.match(cliResult.stdout, /USAGE:/);
-assert.match(cliResult.stdout, /streamlinear-cli search/);
+  const cliResult = run(resolve(consumer, "node_modules/.bin/streamlinear-cli"), ["help"], {
+    cwd: consumer,
+  });
+  assert.match(cliResult.stdout, /USAGE:/);
+  assert.match(cliResult.stdout, /streamlinear-cli search/);
 
-const binServerResult = run(resolve(consumer, "node_modules/.bin/streamlinear"), [], {
-  cwd: consumer,
-  allowFailure: true,
-});
-assert.notEqual(binServerResult.status, 0);
-assert.match(binServerResult.stderr, /LINEAR_API_TOKEN environment variable is required/);
+  const binServerResult = run(resolve(consumer, "node_modules/.bin/streamlinear"), [], {
+    cwd: consumer,
+    allowFailure: true,
+  });
+  assert.notEqual(binServerResult.status, 0);
+  assert.match(binServerResult.stderr, /LINEAR_API_TOKEN environment variable is required/);
 
-const directServerResult = run(
-  process.execPath,
-  [resolve(installedRoot, "mcp/dist/index.js")],
-  { cwd: consumer, allowFailure: true },
-);
-assert.notEqual(directServerResult.status, 0);
-assert.match(directServerResult.stderr, /LINEAR_API_TOKEN environment variable is required/);
+  const directServerResult = run(
+    process.execPath,
+    [resolve(installedRoot, "mcp/dist/index.js")],
+    { cwd: consumer, allowFailure: true },
+  );
+  assert.notEqual(directServerResult.status, 0);
+  assert.match(directServerResult.stderr, /LINEAR_API_TOKEN environment variable is required/);
 
-console.log(`verified ${basename(tarball)}`);
+  console.log(`verified ${basename(tarball)}`);
+} finally {
+  rmSync(tempRoot, { recursive: true, force: true });
+}

@@ -112,4 +112,5 @@ if (args.write) {
   const destination = resolve(root, args.write);
   mkdirSync(dirname(destination), { recursive: true });
   writeFileSync(destination, markdownSummary(results, args.followUp));
+  console.log(`wrote ${args.write}`);
 }
