@@ -21049,14 +21049,15 @@ async function handleUpdate(id, updates) {
   if (!issueData.issue) {
     return `Issue ${id} not found`;
   }
+  const existingIssue = issueData.issue;
   const input = {};
   if (updates.state) {
-    const stateId = await resolveState(issueData.issue.team.id, updates.state);
+    const stateId = await resolveState(existingIssue.team.id, updates.state);
     if (stateId) {
       input.stateId = stateId;
     } else {
       const teams = await getTeams();
-      const team = teams.find((t) => t.id === issueData.issue.team.id);
+      const team = teams.find((t) => t.id === existingIssue.team.id);
       const validStates = team ? team.states.nodes.map((s) => s.name).join(", ") : "unknown";
       return `State "${updates.state}" not found. Valid states: ${validStates}`;
     }
@@ -21094,7 +21095,7 @@ async function handleUpdate(id, updates) {
         issue { identifier title state { name } priority assignee { name } }
       }
     }
-  `, { id: issueData.issue.id, input });
+  `, { id: existingIssue.id, input });
   const issue2 = updateResult.issueUpdate.issue;
   const changes = [];
   if (updates.state)

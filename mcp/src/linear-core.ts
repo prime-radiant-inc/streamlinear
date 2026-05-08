@@ -282,16 +282,17 @@ export async function handleUpdate(
     return `Issue ${id} not found`;
   }
 
+  const existingIssue = issueData.issue;
   const input: Record<string, unknown> = {};
 
   if (updates.state) {
-    const stateId = await resolveState(issueData.issue.team.id, updates.state);
+    const stateId = await resolveState(existingIssue.team.id, updates.state);
     if (stateId) {
       input.stateId = stateId;
     } else {
       // Get valid states for this team
       const teams = await getTeams();
-      const team = teams.find((t) => t.id === issueData.issue.team.id);
+      const team = teams.find((t) => t.id === existingIssue.team.id);
       const validStates = team
         ? (team.states as { nodes: Array<Record<string, unknown>> }).nodes
             .map((s) => s.name as string)
@@ -339,7 +340,7 @@ export async function handleUpdate(
         issue { identifier title state { name } priority assignee { name } }
       }
     }
-  `, { id: issueData.issue.id, input }) as { issueUpdate: { issue: Record<string, unknown> } };
+  `, { id: existingIssue.id, input }) as { issueUpdate: { issue: Record<string, unknown> } };
 
   const issue = updateResult.issueUpdate.issue;
   const changes: string[] = [];
