@@ -4,6 +4,8 @@
 
 - Reissued the npm package through the GitHub release workflow so npm can record
   provenance for the published artifact.
+- Switched the release workflow to npm trusted publishing via GitHub OIDC and
+  corrected package repository metadata to match the GitHub repo.
 - Added repository-local `AGENTS.md` and `CLAUDE.md` guidance for future
   agent-assisted release and package maintenance work.
 

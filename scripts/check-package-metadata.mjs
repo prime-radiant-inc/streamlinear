@@ -58,6 +58,6 @@ assert.equal(mcpPackage.version, rootPackage.version);
 assert.equal(mcpPackage.type, "module");
 
 assert.equal(plugin.version, rootPackage.version);
-assert.equal(plugin.repository, "https://github.com/primeradianthq/streamlinear");
+assert.equal(plugin.repository, "https://github.com/prime-radiant-inc/streamlinear");
 
 console.log("package metadata is npm-grade");

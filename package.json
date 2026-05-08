@@ -9,12 +9,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/primeradianthq/streamlinear.git"
+    "url": "git+https://github.com/prime-radiant-inc/streamlinear.git"
   },
   "bugs": {
-    "url": "https://github.com/primeradianthq/streamlinear/issues"
+    "url": "https://github.com/prime-radiant-inc/streamlinear/issues"
   },
-  "homepage": "https://github.com/primeradianthq/streamlinear#readme",
+  "homepage": "https://github.com/prime-radiant-inc/streamlinear#readme",
   "engines": {
     "node": ">=20"
   },

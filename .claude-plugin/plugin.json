@@ -5,7 +5,7 @@
   "author": {
     "name": "Prime Radiant"
   },
-  "repository": "https://github.com/primeradianthq/streamlinear",
+  "repository": "https://github.com/prime-radiant-inc/streamlinear",
   "mcpServers": {
     "linear": {
       "command": "node",
