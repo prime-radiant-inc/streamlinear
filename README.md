@@ -45,7 +45,7 @@ Add to your `.mcp.json`:
   "mcpServers": {
     "linear": {
       "command": "npx",
-      "args": ["-y", "@primeradianthq/streamlinear@1.1.1"],
+      "args": ["-y", "@primeradianthq/streamlinear@1.1.2"],
       "env": {
         "LINEAR_API_TOKEN": "lin_api_xxxxx"
       }
@@ -63,7 +63,7 @@ To use streamlinear with multiple Linear workspaces, create separate MCP entries
   "mcpServers": {
     "linear-personal": {
       "command": "npx",
-      "args": ["-y", "@primeradianthq/streamlinear@1.1.1"],
+      "args": ["-y", "@primeradianthq/streamlinear@1.1.2"],
       "env": {
         "LINEAR_API_TOKEN": "${LINEAR_PERSONAL_TOKEN}"
       },
@@ -71,7 +71,7 @@ To use streamlinear with multiple Linear workspaces, create separate MCP entries
     },
     "linear-work": {
       "command": "npx",
-      "args": ["-y", "@primeradianthq/streamlinear@1.1.1"],
+      "args": ["-y", "@primeradianthq/streamlinear@1.1.2"],
       "env": {
         "LINEAR_API_TOKEN": "${LINEAR_WORK_TOKEN}"
       },
@@ -86,7 +86,7 @@ To use streamlinear with multiple Linear workspaces, create separate MCP entries
 When installed as a dependency, the package provides two binaries:
 
 ```bash
-npm install @primeradianthq/streamlinear@1.1.1
+npm install @primeradianthq/streamlinear@1.1.2
 npx streamlinear-cli help
 npx streamlinear
 ```

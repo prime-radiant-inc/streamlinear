@@ -34,7 +34,7 @@ const mcpPackage = readJson("mcp/package.json");
 const plugin = readJson(".claude-plugin/plugin.json");
 
 assert.equal(rootPackage.name, "@primeradianthq/streamlinear");
-assert.equal(rootPackage.version, "1.1.1");
+assert.equal(rootPackage.version, "1.1.2");
 assert.equal(rootPackage.publishConfig?.access, "public");
 assert.deepEqual(rootPackage.bin, {
   streamlinear: "mcp/dist/index.js",

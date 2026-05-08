@@ -37,7 +37,8 @@ The npm package is published from `v*.*.*` tags. Before tagging, run:
 npm ci
 npm --prefix mcp ci
 npm run check
-npm view @primeradianthq/streamlinear@1.1.1 version
+npm view @primeradianthq/streamlinear@X.Y.Z version
 ```
 
-The `npm view` command should fail before the first `1.1.1` publish.
+Replace `X.Y.Z` with the package version being released. The `npm view` command
+should fail before the tag is pushed.

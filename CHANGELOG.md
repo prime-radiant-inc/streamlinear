@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.2 - 2026-05-08
+
+- Reissued the npm package through the GitHub release workflow so npm can record
+  provenance for the published artifact.
+- Added repository-local `AGENTS.md` and `CLAUDE.md` guidance for future
+  agent-assisted release and package maintenance work.
+
 ## 1.1.1 - 2026-05-08
 
 - Moved npm package identity to `@primeradianthq/streamlinear`.
