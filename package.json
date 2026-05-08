@@ -1,6 +1,6 @@
 {
   "name": "@primeradianthq/streamlinear",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "A lightweight Linear MCP for Claude Code",
   "author": "Prime Radiant",
   "contributors": [
@@ -43,7 +43,7 @@
     "package:check": "node scripts/check-package-metadata.mjs",
     "audit:prod": "node scripts/audit-visibility.mjs --workspace root",
     "audit:prod:mcp": "node scripts/audit-visibility.mjs --workspace mcp",
-    "audit:summary": "node scripts/audit-visibility.mjs --workspace all --write docs/release/streamlinear-1.1.2-audit.md",
+    "audit:summary": "node scripts/audit-visibility.mjs --workspace all --write docs/release/streamlinear-1.1.3-audit.md",
     "pack:verify": "node scripts/verify-pack.mjs",
     "check": "npm run build && npm run typecheck && npm run test && npm run dist:check && npm run package:check && npm run audit:prod && npm run audit:prod:mcp && npm run pack:verify",
     "hooks:install": "lefthook install",

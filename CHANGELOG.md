@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.3 - 2026-05-08
+
+- Reissued the npm package from the corrected OIDC trusted-publishing workflow
+  so npm can publish provenance from the tag build.
+
 ## 1.1.2 - 2026-05-08
 
 - Reissued the npm package through the GitHub release workflow so npm can record

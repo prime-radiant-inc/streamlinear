@@ -21287,7 +21287,7 @@ if (!getApiToken()) {
 }
 var server = new McpServer({
   name: "linear",
-  version: "1.1.2"
+  version: "1.1.3"
 });
 var toolDescription = await buildToolDescription();
 server.tool(

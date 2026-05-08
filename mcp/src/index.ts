@@ -16,7 +16,7 @@ if (!getApiToken()) {
 // Create MCP server
 const server = new McpServer({
   name: "linear",
-  version: "1.1.2",
+  version: "1.1.3",
 });
 
 // Fetch teams/states at startup, then register tool
