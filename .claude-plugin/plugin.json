@@ -1,12 +1,11 @@
 {
   "name": "streamlinear",
-  "version": "1.0.0",
-  "description": "Streamlined Linear integration - one tool, six actions, zero bloat",
+  "version": "1.1.1",
+  "description": "Streamlined Linear integration - one tool, seven actions, zero bloat",
   "author": {
-    "name": "Jesse Vincent",
-    "email": "jesse@fsck.com"
+    "name": "Prime Radiant"
   },
-  "repository": "https://github.com/obra/streamlinear",
+  "repository": "https://github.com/primeradianthq/streamlinear",
   "mcpServers": {
     "linear": {
       "command": "node",

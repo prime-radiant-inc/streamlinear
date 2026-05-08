@@ -1,6 +1,6 @@
 {
   "name": "streamlinear-mcp",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "A lightweight MCP server for Linear",
   "type": "module",
   "main": "dist/index.js",
@@ -8,6 +8,8 @@
     "build": "npm run build:mcp && npm run build:cli",
     "build:mcp": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.js --external:fsevents --banner:js='#!/usr/bin/env node'",
     "build:cli": "esbuild src/cli.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/cli.js --external:fsevents --banner:js='#!/usr/bin/env node'",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
     "start": "node dist/index.js"
   },
   "dependencies": {

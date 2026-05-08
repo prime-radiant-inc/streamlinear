@@ -1,27 +1,56 @@
 {
-  "name": "streamlinear",
-  "version": "1.0.0",
+  "name": "@primeradianthq/streamlinear",
+  "version": "1.1.1",
   "description": "A lightweight Linear MCP for Claude Code",
-  "author": "Jesse Vincent <jesse@fsck.com>",
+  "author": "Prime Radiant",
+  "contributors": [
+    "Jesse Vincent <jesse@fsck.com>"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/obra/streamlinear.git"
+    "url": "git+https://github.com/primeradianthq/streamlinear.git"
+  },
+  "bugs": {
+    "url": "https://github.com/primeradianthq/streamlinear/issues"
+  },
+  "homepage": "https://github.com/primeradianthq/streamlinear#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "bin": {
     "streamlinear": "mcp/dist/index.js",
     "streamlinear-cli": "mcp/dist/cli.js"
   },
+  "files": [
+    "mcp/dist/index.js",
+    "mcp/dist/cli.js",
+    "mcp/package.json",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "CHANGELOG.md"
+  ],
   "scripts": {
-    "build": "cd mcp && npm install && npm run build",
-    "start": "node mcp/dist/index.js",
-    "prepare": "simple-git-hooks"
-  },
-  "simple-git-hooks": {
-    "pre-commit": "npm run build && git add mcp/dist/index.js mcp/dist/cli.js"
+    "build": "npm --prefix mcp run build",
+    "typecheck": "npm --prefix mcp run typecheck",
+    "test": "npm --prefix mcp run test",
+    "dist:check": "node scripts/check-dist-artifacts.mjs",
+    "package:check": "node scripts/check-package-metadata.mjs",
+    "audit:prod": "node scripts/audit-visibility.mjs --workspace root",
+    "audit:prod:mcp": "node scripts/audit-visibility.mjs --workspace mcp",
+    "audit:summary": "node scripts/audit-visibility.mjs --workspace all --write docs/release/streamlinear-1.1.1-audit.md",
+    "pack:verify": "node scripts/verify-pack.mjs",
+    "check": "npm run build && npm run typecheck && npm run test && npm run dist:check && npm run package:check && npm run audit:prod && npm run audit:prod:mcp && npm run pack:verify",
+    "hooks:install": "lefthook install",
+    "release:verify-tag": "node scripts/check-release-tag.mjs"
   },
   "devDependencies": {
-    "simple-git-hooks": "^2.11.1"
+    "lefthook": "^2.1.6"
   },
   "keywords": [
     "linear",
