@@ -1,0 +1,5 @@
+pre-commit:
+  commands:
+    streamlinear-check:
+      glob: "{package.json,package-lock.json,mcp/package.json,mcp/package-lock.json,mcp/tsconfig.json,mcp/src/**/*.ts,mcp/test/**/*.mjs,scripts/**/*.mjs,lefthook.yml,.github/workflows/*.yml}"
+      run: npm run check
