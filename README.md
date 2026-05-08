@@ -45,7 +45,7 @@ Add to your `.mcp.json`:
   "mcpServers": {
     "linear": {
       "command": "npx",
-      "args": ["-y", "github:obra/streamlinear"],
+      "args": ["-y", "@primeradianthq/streamlinear@1.1.1"],
       "env": {
         "LINEAR_API_TOKEN": "lin_api_xxxxx"
       }
@@ -56,14 +56,14 @@ Add to your `.mcp.json`:
 
 ### Multiple Workspaces
 
-To use streamlinear with multiple Linear workspaces (e.g., personal and work), create separate MCP entries and use variable substitution in the `env` field:
+To use streamlinear with multiple Linear workspaces, create separate MCP entries and map each secret to `LINEAR_API_TOKEN`:
 
 ```json
 {
   "mcpServers": {
     "linear-personal": {
       "command": "npx",
-      "args": ["-y", "github:obra/streamlinear"],
+      "args": ["-y", "@primeradianthq/streamlinear@1.1.1"],
       "env": {
         "LINEAR_API_TOKEN": "${LINEAR_PERSONAL_TOKEN}"
       },
@@ -71,7 +71,7 @@ To use streamlinear with multiple Linear workspaces (e.g., personal and work), c
     },
     "linear-work": {
       "command": "npx",
-      "args": ["-y", "github:obra/streamlinear"],
+      "args": ["-y", "@primeradianthq/streamlinear@1.1.1"],
       "env": {
         "LINEAR_API_TOKEN": "${LINEAR_WORK_TOKEN}"
       },
@@ -81,12 +81,17 @@ To use streamlinear with multiple Linear workspaces (e.g., personal and work), c
 }
 ```
 
-**How this works:**
-- `envFrom` loads your secrets/env vars (e.g., `LINEAR_WORK_TOKEN`) into the MCP process environment
-- `env` with `${VARIABLE}` substitution maps those values to `LINEAR_API_TOKEN` that streamlinear expects
-- Each MCP instance gets its own `LINEAR_API_TOKEN`, but with different values
+### Installed Package
 
-This pattern works with any MCP server config system that supports variable substitution (Claude Desktop, Claude Code, Sen, etc.).
+When installed as a dependency, the package provides two binaries:
+
+```bash
+npm install @primeradianthq/streamlinear@1.1.1
+npx streamlinear-cli help
+npx streamlinear
+```
+
+The MCP server requires `LINEAR_API_TOKEN` at runtime. Consumers such as Scribble may expose their own operator-facing variable and map it to `LINEAR_API_TOKEN` before starting streamlinear.
 
 ## Smart Defaults
 
