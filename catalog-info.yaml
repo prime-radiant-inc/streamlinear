@@ -1,0 +1,14 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: streamlinear
+  description: "Lightweight Linear MCP server for Claude Code exposing one tool with action dispatch (~500 tokens vs ~17k)."
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    prime-radiant.com/repo-map-rev: "d02cee318021e3f01ee4d1c549996f68adcd982d"
+  tags: [typescript, mcp, linear, claude-code, ai-agents]
+spec:
+  type: tool
+  lifecycle: production
+  owner: user:obra
+  system: agent-libs
