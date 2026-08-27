@@ -4166,6 +4166,22 @@ async function resolveState(teamId, stateName) {
   }
   return null;
 }
+async function resolveAssignee(assignee) {
+  if (assignee === "me") {
+    const viewer = await getViewer();
+    return viewer.id;
+  }
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(assignee)) {
+    return assignee;
+  }
+  const userData = await graphql(`
+    query { users { nodes { id email } } }
+  `);
+  const user = userData.users.nodes.find(
+    (u) => u.email.toLowerCase() === assignee.toLowerCase()
+  );
+  return user ? user.id : null;
+}
 async function resolveTeam(input) {
   const teams = await getTeams();
   const lower = input.toLowerCase();
@@ -4286,18 +4302,10 @@ async function handleUpdate(id, updates) {
   if (updates.assignee !== void 0) {
     if (updates.assignee === null) {
       input.assigneeId = null;
-    } else if (updates.assignee === "me") {
-      const viewer = await getViewer();
-      input.assigneeId = viewer.id;
     } else {
-      const userData = await graphql(`
-        query { users { nodes { id email } } }
-      `);
-      const user = userData.users.nodes.find(
-        (u) => u.email.toLowerCase() === updates.assignee.toLowerCase()
-      );
-      if (user) {
-        input.assigneeId = user.id;
+      const assigneeId = await resolveAssignee(updates.assignee);
+      if (assigneeId) {
+        input.assigneeId = assigneeId;
       } else {
         return `Could not find user with email "${updates.assignee}"`;
       }
@@ -4361,6 +4369,23 @@ async function handleCreate(title, team, options) {
     input.description = options.body;
   if (options.priority !== void 0)
     input.priority = options.priority;
+  if (options.state) {
+    const stateId = await resolveState(teamData.id, options.state);
+    if (stateId) {
+      input.stateId = stateId;
+    } else {
+      const validStates = teamData.states.nodes.map((s) => s.name).join(", ");
+      return `State "${options.state}" not found. Valid states: ${validStates}`;
+    }
+  }
+  if (options.assignee) {
+    const assigneeId = await resolveAssignee(options.assignee);
+    if (assigneeId) {
+      input.assigneeId = assigneeId;
+    } else {
+      return `Could not find user with email "${options.assignee}"`;
+    }
+  }
   const data = await graphql(`
     mutation($input: IssueCreateInput!) {
       issueCreate(input: $input) {
