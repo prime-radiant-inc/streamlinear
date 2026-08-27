@@ -150,6 +150,29 @@ export async function resolveState(teamId: string, stateName: string): Promise<s
   return null;
 }
 
+// Resolve "me", an email, or a UUID to a user ID. Returns null if no match.
+export async function resolveAssignee(assignee: string): Promise<string | null> {
+  if (assignee === "me") {
+    const viewer = await getViewer();
+    return viewer.id as string;
+  }
+
+  // UUID - assume it's already a valid user ID
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(assignee)) {
+    return assignee;
+  }
+
+  // Look up by email
+  const userData = await graphql(`
+    query { users { nodes { id email } } }
+  `) as { users: { nodes: Array<{ id: string; email: string }> } };
+
+  const user = userData.users.nodes.find((u) =>
+    u.email.toLowerCase() === assignee.toLowerCase()
+  );
+  return user ? user.id : null;
+}
+
 // Resolve team by key or name
 export async function resolveTeam(input: string): Promise<Record<string, unknown> | null> {
   const teams = await getTeams();
@@ -309,20 +332,10 @@ export async function handleUpdate(
   if (updates.assignee !== undefined) {
     if (updates.assignee === null) {
       input.assigneeId = null;
-    } else if (updates.assignee === "me") {
-      const viewer = await getViewer();
-      input.assigneeId = viewer.id;
     } else {
-      // Look up by email
-      const userData = await graphql(`
-        query { users { nodes { id email } } }
-      `) as { users: { nodes: Array<{ id: string; email: string }> } };
-
-      const user = userData.users.nodes.find((u) =>
-        u.email.toLowerCase() === updates.assignee!.toLowerCase()
-      );
-      if (user) {
-        input.assigneeId = user.id;
+      const assigneeId = await resolveAssignee(updates.assignee);
+      if (assigneeId) {
+        input.assigneeId = assigneeId;
       } else {
         return `Could not find user with email "${updates.assignee}"`;
       }
@@ -382,7 +395,7 @@ export async function handleComment(id: string, body: string): Promise<string> {
 export async function handleCreate(
   title: string,
   team: string,
-  options: { body?: string; priority?: number; labels?: string[] }
+  options: { body?: string; priority?: number; state?: string; assignee?: string | null; labels?: string[] }
 ): Promise<string> {
   const teamData = await resolveTeam(team);
   if (!teamData) {
@@ -398,6 +411,27 @@ export async function handleCreate(
 
   if (options.body) input.description = options.body;
   if (options.priority !== undefined) input.priority = options.priority;
+
+  if (options.state) {
+    const stateId = await resolveState(teamData.id as string, options.state);
+    if (stateId) {
+      input.stateId = stateId;
+    } else {
+      const validStates = (teamData.states as { nodes: Array<Record<string, unknown>> }).nodes
+        .map((s) => s.name as string)
+        .join(", ");
+      return `State "${options.state}" not found. Valid states: ${validStates}`;
+    }
+  }
+
+  if (options.assignee) {
+    const assigneeId = await resolveAssignee(options.assignee);
+    if (assigneeId) {
+      input.assigneeId = assigneeId;
+    } else {
+      return `Could not find user with email "${options.assignee}"`;
+    }
+  }
 
   const data = await graphql(`
     mutation($input: IssueCreateInput!) {
@@ -434,6 +468,8 @@ export function handleHelp(): string {
   {"action": "update", "id": "ABC-123", "state": "Done"}
   {"action": "update", "id": "ABC-123", "priority": 1}
   {"action": "update", "id": "ABC-123", "assignee": "me"}
+  {"action": "update", "id": "ABC-123", "assignee": "user@example.com"}
+  {"action": "update", "id": "ABC-123", "assignee": "ad660447-3bc6-46c9-bec8-568c55512e79"}  → by user UUID
   {"action": "update", "id": "ABC-123", "assignee": null}  → unassign
 
 **comment** - Add comment to issue
@@ -442,6 +478,7 @@ export function handleHelp(): string {
 **create** - Create new issue
   {"action": "create", "title": "Bug title", "team": "ENG"}
   {"action": "create", "title": "Bug", "team": "ENG", "body": "Details", "priority": 2}
+  {"action": "create", "title": "Bug", "team": "ENG", "state": "Todo", "assignee": "me"}
 
 **graphql** - Raw GraphQL for anything else
   {"action": "graphql", "graphql": "query { projects { nodes { id name } } }"}
@@ -533,6 +570,8 @@ export async function dispatchAction(params: LinearParamsType): Promise<string> 
       return await handleCreate(params.title, params.team, {
         body: params.body,
         priority: params.priority,
+        state: params.state,
+        assignee: params.assignee,
         labels: params.labels,
       });
 
