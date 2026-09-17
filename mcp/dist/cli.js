@@ -4173,6 +4173,18 @@ async function resolveTeam(input) {
     (t) => t.key.toLowerCase() === lower || t.name.toLowerCase() === lower
   ) || null;
 }
+async function resolveLabelIds(names) {
+  if (names.length === 0)
+    return [];
+  const data = await graphql(`
+    query($names: [String!]) {
+      issueLabels(filter: { name: { in: $names } }) {
+        nodes { id name }
+      }
+    }
+  `, { names });
+  return data.issueLabels.nodes.map((l) => l.id);
+}
 async function handleSearch(query) {
   const viewer = await getViewer();
   let filter = "";
@@ -4283,6 +4295,9 @@ async function handleUpdate(id, updates) {
   if (updates.priority !== void 0) {
     input.priority = updates.priority;
   }
+  if (updates.labels && updates.labels.length > 0) {
+    input.labelIds = await resolveLabelIds(updates.labels);
+  }
   if (updates.assignee !== void 0) {
     if (updates.assignee === null) {
       input.assigneeId = null;
@@ -4320,6 +4335,8 @@ async function handleUpdate(id, updates) {
     changes.push(`state \u2192 ${issue.state?.name}`);
   if (updates.priority !== void 0)
     changes.push(`priority \u2192 ${priorityName(issue.priority)}`);
+  if (updates.labels && updates.labels.length > 0)
+    changes.push(`labels \u2192 ${updates.labels.join(", ")}`);
   if (updates.assignee !== void 0) {
     changes.push(`assignee \u2192 ${issue.assignee?.name || "Unassigned"}`);
   }
@@ -4361,6 +4378,20 @@ async function handleCreate(title, team, options) {
     input.description = options.body;
   if (options.priority !== void 0)
     input.priority = options.priority;
+  if (options.state) {
+    const stateId = await resolveState(teamData.id, options.state);
+    if (stateId) {
+      input.stateId = stateId;
+    } else {
+      const teams = await getTeams();
+      const teamForStates = teams.find((t) => t.id === teamData.id);
+      const validStates = teamForStates ? teamForStates.states.nodes.map((s) => s.name).join(", ") : "unknown";
+      return `State "${options.state}" not found. Valid states: ${validStates}`;
+    }
+  }
+  if (options.labels && options.labels.length > 0) {
+    input.labelIds = await resolveLabelIds(options.labels);
+  }
   const data = await graphql(`
     mutation($input: IssueCreateInput!) {
       issueCreate(input: $input) {

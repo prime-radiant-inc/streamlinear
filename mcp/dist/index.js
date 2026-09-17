@@ -20955,6 +20955,18 @@ async function resolveTeam(input) {
     (t) => t.key.toLowerCase() === lower || t.name.toLowerCase() === lower
   ) || null;
 }
+async function resolveLabelIds(names) {
+  if (names.length === 0)
+    return [];
+  const data = await graphql(`
+    query($names: [String!]) {
+      issueLabels(filter: { name: { in: $names } }) {
+        nodes { id name }
+      }
+    }
+  `, { names });
+  return data.issueLabels.nodes.map((l) => l.id);
+}
 async function handleSearch(query) {
   const viewer = await getViewer();
   let filter = "";
@@ -21065,6 +21077,9 @@ async function handleUpdate(id, updates) {
   if (updates.priority !== void 0) {
     input.priority = updates.priority;
   }
+  if (updates.labels && updates.labels.length > 0) {
+    input.labelIds = await resolveLabelIds(updates.labels);
+  }
   if (updates.assignee !== void 0) {
     if (updates.assignee === null) {
       input.assigneeId = null;
@@ -21102,6 +21117,8 @@ async function handleUpdate(id, updates) {
     changes.push(`state \u2192 ${issue2.state?.name}`);
   if (updates.priority !== void 0)
     changes.push(`priority \u2192 ${priorityName(issue2.priority)}`);
+  if (updates.labels && updates.labels.length > 0)
+    changes.push(`labels \u2192 ${updates.labels.join(", ")}`);
   if (updates.assignee !== void 0) {
     changes.push(`assignee \u2192 ${issue2.assignee?.name || "Unassigned"}`);
   }
@@ -21143,6 +21160,20 @@ async function handleCreate(title, team, options) {
     input.description = options.body;
   if (options.priority !== void 0)
     input.priority = options.priority;
+  if (options.state) {
+    const stateId = await resolveState(teamData.id, options.state);
+    if (stateId) {
+      input.stateId = stateId;
+    } else {
+      const teams = await getTeams();
+      const teamForStates = teams.find((t) => t.id === teamData.id);
+      const validStates = teamForStates ? teamForStates.states.nodes.map((s) => s.name).join(", ") : "unknown";
+      return `State "${options.state}" not found. Valid states: ${validStates}`;
+    }
+  }
+  if (options.labels && options.labels.length > 0) {
+    input.labelIds = await resolveLabelIds(options.labels);
+  }
   const data = await graphql(`
     mutation($input: IssueCreateInput!) {
       issueCreate(input: $input) {
@@ -21172,11 +21203,12 @@ function handleHelp() {
 **get** - Issue details (accepts ABC-123, URLs, or UUIDs)
   {"action": "get", "id": "ABC-123"}
 
-**update** - Change state, priority, assignee
+**update** - Change state, priority, assignee, labels
   {"action": "update", "id": "ABC-123", "state": "Done"}
   {"action": "update", "id": "ABC-123", "priority": 1}
   {"action": "update", "id": "ABC-123", "assignee": "me"}
   {"action": "update", "id": "ABC-123", "assignee": null}  \u2192 unassign
+  {"action": "update", "id": "ABC-123", "labels": ["Bug"]}
 
 **comment** - Add comment to issue
   {"action": "comment", "id": "ABC-123", "body": "Fixed in abc123"}
@@ -21184,6 +21216,7 @@ function handleHelp() {
 **create** - Create new issue
   {"action": "create", "title": "Bug title", "team": "ENG"}
   {"action": "create", "title": "Bug", "team": "ENG", "body": "Details", "priority": 2}
+  {"action": "create", "title": "Bug", "team": "ENG", "state": "Refinement", "labels": ["Bug"]}
 
 **graphql** - Raw GraphQL for anything else
   {"action": "graphql", "graphql": "query { projects { nodes { id name } } }"}
@@ -21267,6 +21300,7 @@ async function dispatchAction(params) {
       return await handleCreate(params.title, params.team, {
         body: params.body,
         priority: params.priority,
+        state: params.state,
         labels: params.labels
       });
     case "graphql":

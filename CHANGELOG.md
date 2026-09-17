@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Fixed `create` silently ignoring the `state` param — it never reached `IssueCreateInput`, so
+  every created issue landed in the team's default state regardless of what was requested.
+- Fixed `create` and `update` silently ignoring the `labels` param — neither handler ever resolved
+  label names to ids or set `labelIds` on the mutation input.
+
 ## 1.1.3 - 2026-05-08
 
 - Reissued the npm package from the corrected OIDC trusted-publishing workflow

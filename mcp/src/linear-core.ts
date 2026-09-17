@@ -161,6 +161,21 @@ export async function resolveTeam(input: string): Promise<Record<string, unknown
   ) || null;
 }
 
+// Resolve label names to their ids
+export async function resolveLabelIds(names: string[]): Promise<string[]> {
+  if (names.length === 0) return [];
+
+  const data = await graphql(`
+    query($names: [String!]) {
+      issueLabels(filter: { name: { in: $names } }) {
+        nodes { id name }
+      }
+    }
+  `, { names }) as { issueLabels: { nodes: Array<{ id: string; name: string }> } };
+
+  return data.issueLabels.nodes.map((l) => l.id);
+}
+
 // Action handlers
 export async function handleSearch(query?: string | Record<string, unknown>): Promise<string> {
   const viewer = await getViewer();
@@ -306,6 +321,10 @@ export async function handleUpdate(
     input.priority = updates.priority;
   }
 
+  if (updates.labels && updates.labels.length > 0) {
+    input.labelIds = await resolveLabelIds(updates.labels);
+  }
+
   if (updates.assignee !== undefined) {
     if (updates.assignee === null) {
       input.assigneeId = null;
@@ -346,6 +365,7 @@ export async function handleUpdate(
   const changes: string[] = [];
   if (updates.state) changes.push(`state → ${(issue.state as Record<string, unknown>)?.name}`);
   if (updates.priority !== undefined) changes.push(`priority → ${priorityName(issue.priority as number)}`);
+  if (updates.labels && updates.labels.length > 0) changes.push(`labels → ${updates.labels.join(", ")}`);
   if (updates.assignee !== undefined) {
     changes.push(`assignee → ${(issue.assignee as Record<string, unknown>)?.name || "Unassigned"}`);
   }
@@ -382,7 +402,7 @@ export async function handleComment(id: string, body: string): Promise<string> {
 export async function handleCreate(
   title: string,
   team: string,
-  options: { body?: string; priority?: number; labels?: string[] }
+  options: { body?: string; priority?: number; state?: string; labels?: string[] }
 ): Promise<string> {
   const teamData = await resolveTeam(team);
   if (!teamData) {
@@ -398,6 +418,26 @@ export async function handleCreate(
 
   if (options.body) input.description = options.body;
   if (options.priority !== undefined) input.priority = options.priority;
+
+  if (options.state) {
+    const stateId = await resolveState(teamData.id as string, options.state);
+    if (stateId) {
+      input.stateId = stateId;
+    } else {
+      const teams = await getTeams();
+      const teamForStates = teams.find((t) => t.id === teamData.id);
+      const validStates = teamForStates
+        ? (teamForStates.states as { nodes: Array<Record<string, unknown>> }).nodes
+            .map((s) => s.name as string)
+            .join(", ")
+        : "unknown";
+      return `State "${options.state}" not found. Valid states: ${validStates}`;
+    }
+  }
+
+  if (options.labels && options.labels.length > 0) {
+    input.labelIds = await resolveLabelIds(options.labels);
+  }
 
   const data = await graphql(`
     mutation($input: IssueCreateInput!) {
@@ -430,11 +470,12 @@ export function handleHelp(): string {
 **get** - Issue details (accepts ABC-123, URLs, or UUIDs)
   {"action": "get", "id": "ABC-123"}
 
-**update** - Change state, priority, assignee
+**update** - Change state, priority, assignee, labels
   {"action": "update", "id": "ABC-123", "state": "Done"}
   {"action": "update", "id": "ABC-123", "priority": 1}
   {"action": "update", "id": "ABC-123", "assignee": "me"}
   {"action": "update", "id": "ABC-123", "assignee": null}  → unassign
+  {"action": "update", "id": "ABC-123", "labels": ["Bug"]}
 
 **comment** - Add comment to issue
   {"action": "comment", "id": "ABC-123", "body": "Fixed in abc123"}
@@ -442,6 +483,7 @@ export function handleHelp(): string {
 **create** - Create new issue
   {"action": "create", "title": "Bug title", "team": "ENG"}
   {"action": "create", "title": "Bug", "team": "ENG", "body": "Details", "priority": 2}
+  {"action": "create", "title": "Bug", "team": "ENG", "state": "Refinement", "labels": ["Bug"]}
 
 **graphql** - Raw GraphQL for anything else
   {"action": "graphql", "graphql": "query { projects { nodes { id name } } }"}
@@ -533,6 +575,7 @@ export async function dispatchAction(params: LinearParamsType): Promise<string> 
       return await handleCreate(params.title, params.team, {
         body: params.body,
         priority: params.priority,
+        state: params.state,
         labels: params.labels,
       });
 
