@@ -499,7 +499,7 @@ IDs accept: ABC-123, linear.app URLs, or UUIDs`;
 // Tool parameter schema
 export const LinearParams = z.object({
   action: z.enum(["search", "get", "update", "comment", "create", "graphql", "help"]),
-  query: z.union([z.string(), z.record(z.unknown())]).optional(),
+  query: z.union([z.string(), z.record(z.string(), z.unknown())]).optional(),
   id: z.string().optional(),
   state: z.string().optional(),
   priority: z.number().min(0).max(4).optional(),
@@ -509,7 +509,7 @@ export const LinearParams = z.object({
   title: z.string().optional(),
   team: z.string().optional(),
   graphql: z.string().optional(),
-  variables: z.record(z.unknown()).optional(),
+  variables: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type LinearParamsType = z.infer<typeof LinearParams>;
