@@ -1,0 +1,200 @@
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import test from "node:test";
+
+const mcpRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const serverPath = join(mcpRoot, "dist", "index.js");
+const stubPath = join(mcpRoot, "test", "helpers", "linear-api-stub.mjs");
+
+function withTimeout(promise, ms, label) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+// Spawn the built MCP server with the Linear API stubbed and speak JSON-RPC
+// over stdio, the same way real MCP clients do.
+class McpSession {
+  constructor(stubLog) {
+    this.child = spawn(
+      process.execPath,
+      ["--import", pathToFileURL(stubPath).href, serverPath],
+      {
+        env: { ...process.env, LINEAR_API_TOKEN: "stub-token", LINEAR_STUB_LOG: stubLog },
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
+
+    this.pending = new Map();
+    this.buffer = "";
+    this.stderr = "";
+
+    this.child.stdout.setEncoding("utf8");
+    this.child.stdout.on("data", (chunk) => this.onStdout(chunk));
+    this.child.stderr.setEncoding("utf8");
+    this.child.stderr.on("data", (chunk) => {
+      this.stderr += chunk;
+    });
+
+    this.exit = new Promise((resolve) => this.child.on("exit", resolve));
+    this.child.on("exit", () => {
+      for (const reject of this.pending.values()) {
+        reject(new Error(`server exited before responding; stderr:\n${this.stderr}`));
+      }
+      this.pending.clear();
+    });
+  }
+
+  onStdout(chunk) {
+    this.buffer += chunk;
+    let newline;
+    while ((newline = this.buffer.indexOf("\n")) !== -1) {
+      const line = this.buffer.slice(0, newline).trim();
+      this.buffer = this.buffer.slice(newline + 1);
+      if (!line) continue;
+      const message = JSON.parse(line);
+      if (message.id !== undefined && this.pending.has(message.id)) {
+        this.pending.get(message.id)(message);
+        this.pending.delete(message.id);
+      }
+    }
+  }
+
+  send(message) {
+    this.child.stdin.write(`${JSON.stringify(message)}\n`);
+  }
+
+  request(message, timeoutMs = 15000) {
+    const received = new Promise((resolve, reject) => {
+      this.pending.set(message.id, resolve);
+    });
+    this.send(message);
+    return withTimeout(received, timeoutMs, `response to ${message.method} (id ${message.id})`);
+  }
+
+  async stop() {
+    if (this.pending.size === 0 && this.exit.isFulfilled) return;
+    this.child.kill();
+    await withTimeout(this.exit, 5000, "server exit");
+  }
+}
+
+function readStubLog(path) {
+  return readFileSync(path, "utf8")
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
+test("linear MCP tool works end to end over stdio", async () => {
+  const workDir = mkdtempSync(join(tmpdir(), "streamlinear-mcp-test-"));
+  const stubLog = join(workDir, "linear-stub.log");
+
+  const session = new McpSession(stubLog);
+
+  try {
+    const init = await session.request({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "streamlinear-test", version: "0.0.0" },
+      },
+    });
+
+    assert.ok(!init.error, `initialize failed: ${JSON.stringify(init.error ?? {})}`);
+    assert.equal(init.result.serverInfo.name, "linear");
+
+    session.send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
+
+    const tools = await session.request({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/list",
+      params: {},
+    });
+
+    assert.ok(!tools.error, `tools/list failed: ${JSON.stringify(tools.error ?? {})}`);
+    const linear = tools.result.tools.find((t) => t.name === "linear");
+    assert.ok(linear, `linear tool missing from tools/list: ${JSON.stringify(tools.result)}`);
+    assert.deepEqual(linear.inputSchema.properties.action.enum, [
+      "search",
+      "get",
+      "update",
+      "comment",
+      "create",
+      "graphql",
+      "help",
+    ]);
+    assert.ok(linear.inputSchema.properties.labels, "tool schema must expose a labels parameter");
+    assert.ok(linear.inputSchema.properties.assignee, "tool schema must expose an assignee parameter");
+
+    const call = (id, arguments_) =>
+      session.request({
+        jsonrpc: "2.0",
+        id,
+        method: "tools/call",
+        params: { name: "linear", arguments: arguments_ },
+      });
+
+    const created = await call(3, {
+      action: "create",
+      title: "Test issue",
+      team: "DEV",
+      state: "Todo",
+      assignee: "me",
+    });
+    assert.ok(!created.error, `create failed: ${JSON.stringify(created.error ?? {})}`);
+    assert.match(
+      created.result.content[0].text,
+      /Created DEV-1/,
+      `unexpected create response: ${JSON.stringify(created.result)}`,
+    );
+
+    const updated = await call(4, {
+      action: "update",
+      id: "DEV-1",
+      assignee: "ad660447-3bc6-46c9-bec8-568c55512e79",
+    });
+    assert.ok(!updated.error, `update failed: ${JSON.stringify(updated.error ?? {})}`);
+    assert.match(
+      updated.result.content[0].text,
+      /Updated DEV-1/,
+      `unexpected update response: ${JSON.stringify(updated.result)}`,
+    );
+
+    const helped = await call(5, { action: "help" });
+    assert.match(
+      helped.result.content[0].text,
+      /## Actions/,
+      `unexpected help response: ${JSON.stringify(helped.result)}`,
+    );
+
+    const requests = readStubLog(stubLog);
+    const createRequest = requests.find((r) => r.query.includes("issueCreate"));
+    assert.ok(createRequest, "no issueCreate mutation reached the stubbed API");
+    assert.equal(createRequest.variables.input.stateId, "state-todo");
+    assert.equal(createRequest.variables.input.assigneeId, "user-viewer");
+
+    const updateRequest = requests.find((r) => r.query.includes("issueUpdate"));
+    assert.ok(updateRequest, "no issueUpdate mutation reached the stubbed API");
+    assert.equal(
+      updateRequest.variables.input.assigneeId,
+      "ad660447-3bc6-46c9-bec8-568c55512e79",
+    );
+  } finally {
+    await session.stop();
+    rmSync(workDir, { recursive: true, force: true });
+  }
+});
