@@ -104,6 +104,7 @@ Set `STREAMLINEAR_POST_ONLY=1` when confidentiality requires that the agent neve
 - IDs accept ABC-123, Linear URLs, or UUIDs
 - State names are fuzzy matched ("done" → "Done", "in prog" → "In Progress")
 - `assignee: "me"` uses the authenticated user
+- `@name` in create descriptions and comment bodies becomes a Linear profile link when it matches exactly one workspace user
 - Error messages show valid options when things fail
 
 ## The GraphQL Escape Valve

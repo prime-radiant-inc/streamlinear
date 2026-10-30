@@ -23,8 +23,30 @@ const TEAMS = [
 ];
 
 const USERS = [
-  { id: "user-ada", email: "ada@example.com" },
-  { id: "user-viewer", email: "viewer@example.com" },
+  {
+    id: "user-ada",
+    email: "ada@example.com",
+    name: "Ada Lovelace",
+    url: "https://linear.app/test/profiles/ada",
+  },
+  {
+    id: "user-viewer",
+    email: "viewer@example.com",
+    name: "Viewer",
+    url: "https://linear.app/test/profiles/viewer",
+  },
+  {
+    id: "user-chris-a",
+    email: "chris.a@example.com",
+    name: "Chris A",
+    url: "https://linear.app/test/profiles/chris-a",
+  },
+  {
+    id: "user-chris-b",
+    email: "chris.b@example.com",
+    name: "Chris B",
+    url: "https://linear.app/test/profiles/chris-b",
+  },
 ];
 
 const LABELS = [
@@ -62,7 +84,7 @@ globalThis.fetch = async (_url, init) => {
     return respond({ data: { teams: { nodes: TEAMS } } });
   }
 
-  if (query.includes("users {")) {
+  if (query.includes("users")) {
     return respond({ data: { users: { nodes: USERS } } });
   }
 

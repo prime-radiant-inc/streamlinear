@@ -19886,6 +19886,47 @@ async function labelError(missing) {
   const available = labels.map((l) => l.name).join(", ");
   return `Label "${missing.join(", ")}" not found. Available labels: ${available}`;
 }
+var cachedUsers = null;
+async function getWorkspaceUsers(force = false) {
+  if (cachedUsers && !force) return cachedUsers;
+  const data = await graphql(`
+    query { users(first: 250) { nodes { id name email url } } }
+  `);
+  cachedUsers = data.users.nodes;
+  return cachedUsers;
+}
+async function convertMentions(text) {
+  const users = await getWorkspaceUsers();
+  const links = /* @__PURE__ */ new Map();
+  for (const user of users) {
+    const url2 = user.url;
+    if (!url2) continue;
+    const keys = /* @__PURE__ */ new Set();
+    const name = (user.name || "").toLowerCase();
+    if (name) {
+      keys.add(name.replace(/\s+/g, ""));
+      const first = name.split(/\s+/)[0];
+      if (first) keys.add(first);
+    }
+    const email3 = (user.email || "").toLowerCase();
+    if (email3) {
+      const local = email3.split("@")[0];
+      if (local) keys.add(local);
+    }
+    for (const key of keys) {
+      const existing = links.get(key);
+      if (existing !== void 0 && existing !== url2) {
+        links.set(key, "");
+      } else {
+        links.set(key, url2);
+      }
+    }
+  }
+  return text.replace(/(?<![\w@])@([\w][\w.-]*)/g, (match, token) => {
+    const url2 = links.get(token.toLowerCase());
+    return url2 ? `[@${token}](${url2})` : match;
+  });
+}
 async function handleSearch(query) {
   const viewer = await getViewer();
   let filter = "";
@@ -20052,14 +20093,15 @@ async function handleComment(id, body) {
   if (!issueData.issue) {
     return `Issue ${id} not found`;
   }
+  const convertedBody = await convertMentions(body);
   await graphql(`
     mutation($issueId: String!, $body: String!) {
       commentCreate(input: { issueId: $issueId, body: $body }) {
         success
       }
     }
-  `, { issueId: issueData.issue.id, body });
-  const truncated = body.length > 100 ? body.slice(0, 100) + "..." : body;
+  `, { issueId: issueData.issue.id, body: convertedBody });
+  const truncated = convertedBody.length > 100 ? convertedBody.slice(0, 100) + "..." : convertedBody;
   return `Added comment to ${issueData.issue.identifier}:
 > ${truncated}`;
 }
@@ -20074,7 +20116,7 @@ async function handleCreate(title, team, options) {
     title,
     teamId: teamData.id
   };
-  if (options.body) input2.description = options.body;
+  if (options.body) input2.description = await convertMentions(options.body);
   if (options.priority !== void 0) input2.priority = options.priority;
   if (options.state) {
     const stateId = await resolveState(teamData.id, options.state);
