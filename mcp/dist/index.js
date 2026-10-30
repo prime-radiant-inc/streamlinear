@@ -36751,12 +36751,15 @@ async function resolveState(teamId, stateName) {
   }
   return null;
 }
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
 async function resolveAssignee(assignee) {
   if (assignee === "me") {
     const viewer = await getViewer();
     return viewer.id;
   }
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(assignee)) {
+  if (isUuid(assignee)) {
     return assignee;
   }
   const userData = await graphql(`
@@ -36869,7 +36872,11 @@ async function handleSearch(query) {
     if (query.assignee === "me") {
       filters.push(`assignee: { id: { eq: "${viewer.id}" } }`);
     } else if (query.assignee) {
-      filters.push(`assignee: { email: { eq: "${query.assignee}" } }`);
+      if (isUuid(query.assignee)) {
+        filters.push(`assignee: { id: { eq: "${query.assignee}" } }`);
+      } else {
+        filters.push(`assignee: { email: { eq: "${query.assignee}" } }`);
+      }
     }
     if (query.state) {
       filters.push(`state: { name: { eqIgnoreCase: "${query.state}" } }`);

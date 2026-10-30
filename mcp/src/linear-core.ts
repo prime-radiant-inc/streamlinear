@@ -160,6 +160,11 @@ export async function resolveState(teamId: string, stateName: string): Promise<s
   return null;
 }
 
+// Test for a Linear UUID (user, issue, label, and other object IDs)
+export function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
 // Resolve "me", an email, or a UUID to a user ID. Returns null if no match.
 export async function resolveAssignee(assignee: string): Promise<string | null> {
   if (assignee === "me") {
@@ -168,7 +173,7 @@ export async function resolveAssignee(assignee: string): Promise<string | null> 
   }
 
   // UUID - assume it's already a valid user ID
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(assignee)) {
+  if (isUuid(assignee)) {
     return assignee;
   }
 
@@ -322,7 +327,12 @@ export async function handleSearch(query?: string | Record<string, unknown>): Pr
     if (query.assignee === "me") {
       filters.push(`assignee: { id: { eq: "${viewer.id}" } }`);
     } else if (query.assignee) {
-      filters.push(`assignee: { email: { eq: "${query.assignee}" } }`);
+      // UUIDs are user IDs; anything else is treated as an email
+      if (isUuid(query.assignee as string)) {
+        filters.push(`assignee: { id: { eq: "${query.assignee}" } }`);
+      } else {
+        filters.push(`assignee: { email: { eq: "${query.assignee}" } }`);
+      }
     }
 
     if (query.state) {

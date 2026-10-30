@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
+
+import { readStubLog } from "./helpers/stub-log.mjs";
 
 const mcpRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverPath = join(mcpRoot, "dist", "index.js");
@@ -90,14 +92,6 @@ class McpSession {
     this.child.kill();
     await withTimeout(this.exit, 5000, "server exit");
   }
-}
-
-function readStubLog(path) {
-  return readFileSync(path, "utf8")
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
 }
 
 test("linear MCP tool works end to end over stdio", async () => {

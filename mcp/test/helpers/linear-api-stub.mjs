@@ -92,6 +92,10 @@ globalThis.fetch = async (_url, init) => {
     return respond({ data: { searchIssues: { nodes: [] } } });
   }
 
+  if (query.includes("issues(")) {
+    return respond({ data: { issues: { nodes: [] } } });
+  }
+
   if (query.includes("issueLabels")) {
     return respond({ data: { issueLabels: { nodes: LABELS } } });
   }
