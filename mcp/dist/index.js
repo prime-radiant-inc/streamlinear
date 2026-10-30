@@ -36651,6 +36651,10 @@ var apiToken = process.env.LINEAR_API_TOKEN;
 function getApiToken() {
   return apiToken;
 }
+function isPostOnly() {
+  const value = process.env.STREAMLINEAR_POST_ONLY;
+  return value === "1" || value !== void 0 && value.toLowerCase() === "true";
+}
 async function graphql(query, variables = {}) {
   const token = getApiToken();
   if (!token) {
@@ -37034,7 +37038,7 @@ async function handleGraphql(query, variables) {
   return JSON.stringify(data, null, 2);
 }
 function handleHelp() {
-  return `# Linear MCP
+  const base = `# Linear MCP
 
 ## Actions
 
@@ -37079,6 +37083,9 @@ Search default: your issues, excluding completed/canceled
 State matching is fuzzy: "done" \u2192 "Done", "in prog" \u2192 "In Progress"
 
 IDs accept: ABC-123, linear.app URLs, or UUIDs`;
+  return isPostOnly() ? `${base}
+
+Post-only mode is active (STREAMLINEAR_POST_ONLY): search, get, and graphql are disabled.` : base;
 }
 var LinearParams = external_exports.object({
   action: external_exports.enum(["search", "get", "update", "comment", "create", "graphql", "help"]),
@@ -37114,9 +37121,13 @@ ${teamLines.join("\n")}
 {"action": "get", "id": "ABC-123"} \u2192 issue details
 {"action": "update", "id": "ABC-123", "state": "Done"}
 {"action": "create", "title": "Title", "team": "${teams[0]?.key || "KEY"}"}
-{"action": "help"} \u2192 full documentation`;
+{"action": "help"} \u2192 full documentation${isPostOnly() ? "\n\nPost-only mode (STREAMLINEAR_POST_ONLY) is active: search, get, and graphql are disabled." : ""}`;
 }
+var POST_ONLY_BLOCKED_ACTIONS = /* @__PURE__ */ new Set(["search", "get", "graphql"]);
 async function dispatchAction(params) {
+  if (isPostOnly() && POST_ONLY_BLOCKED_ACTIONS.has(params.action)) {
+    return `Action "${params.action}" is disabled: STREAMLINEAR_POST_ONLY is set, so this server only allows create, update, comment, and help.`;
+  }
   switch (params.action) {
     case "search":
       return await handleSearch(params.query);

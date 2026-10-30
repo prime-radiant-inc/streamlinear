@@ -115,7 +115,26 @@ globalThis.fetch = async (_url, init) => {
 
   if (query.includes("issue(")) {
     return respond({
-      data: { issue: { id: variables.id, identifier: "DEV-1", team: { id: "team-dev" } } },
+      data: {
+        issue: {
+          id: variables.id,
+          identifier: "DEV-1",
+          title: "Test issue",
+          description: "A test issue",
+          state: { name: "Todo" },
+          priority: 2,
+          assignee: { name: "Ada Lovelace", email: "ada@example.com" },
+          labels: { nodes: [{ name: "bug" }] },
+          dueDate: null,
+          url: "https://linear.app/test/issue/DEV-1",
+          team: { id: "team-dev", key: "DEV", name: "Development" },
+          comments: {
+            nodes: [
+              { body: "First comment", createdAt: "2026-10-29T00:00:00Z", user: { name: "Ada" } },
+            ],
+          },
+        },
+      },
     });
   }
 

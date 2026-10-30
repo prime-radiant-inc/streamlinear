@@ -93,6 +93,10 @@ npx streamlinear
 
 The MCP server requires `LINEAR_API_TOKEN` at runtime. Consumers such as Scribble may expose their own operator-facing variable and map it to `LINEAR_API_TOKEN` before starting streamlinear.
 
+### Post-Only Mode
+
+Set `STREAMLINEAR_POST_ONLY=1` when confidentiality requires that the agent never read issue content. The server then refuses the read actions (`search`, `get`, and `graphql`) while `create`, `update`, `comment`, and `help` keep working. Internal lookups such as team names and workflow states still happen; they expose workspace metadata, not issue content.
+
 ## Smart Defaults
 
 - Teams and workflow states shown in tool description (fetched at startup)

@@ -23,12 +23,17 @@ function withTimeout(promise, ms, label) {
 // Spawn the built MCP server with the Linear API stubbed and speak JSON-RPC
 // over stdio, the same way real MCP clients do.
 class McpSession {
-  constructor(stubLog) {
+  constructor(stubLog, options = {}) {
     this.child = spawn(
       process.execPath,
       ["--import", pathToFileURL(stubPath).href, serverPath],
       {
-        env: { ...process.env, LINEAR_API_TOKEN: "stub-token", LINEAR_STUB_LOG: stubLog },
+        env: {
+          ...process.env,
+          LINEAR_API_TOKEN: "stub-token",
+          LINEAR_STUB_LOG: stubLog,
+          ...(options.env ?? {}),
+        },
         stdio: ["pipe", "pipe", "pipe"],
       },
     );
@@ -290,6 +295,106 @@ test("unknown label names produce an actionable error", async () => {
       /Label "nope" not found\. Available labels: bug, urgent, docs/,
       `unknown label should name the missing label and the options: ${JSON.stringify(failed.result)}`,
     );
+  } finally {
+    await cleanupSession(session, workDir);
+  }
+});
+
+test("post-only mode blocks read actions and allows writes", async () => {
+  const workDir = mkdtempSync(join(tmpdir(), "streamlinear-mcp-test-"));
+  const stubLog = join(workDir, "linear-stub.log");
+  const session = new McpSession(stubLog, { env: { STREAMLINEAR_POST_ONLY: "1" } });
+
+  try {
+    const init = await session.request({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "streamlinear-test", version: "0.0.0" },
+      },
+    });
+    assert.ok(!init.error, `initialize failed: ${JSON.stringify(init.error ?? {})}`);
+    session.send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
+
+    const call = (id, arguments_) =>
+      session.request({
+        jsonrpc: "2.0",
+        id,
+        method: "tools/call",
+        params: { name: "linear", arguments: arguments_ },
+      });
+
+    const blockedGet = await call(2, { action: "get", id: "DEV-1" });
+    assert.match(
+      blockedGet.result.content[0].text,
+      /Action "get" is disabled: STREAMLINEAR_POST_ONLY is set/,
+      `get must be blocked in post-only mode: ${JSON.stringify(blockedGet.result)}`,
+    );
+
+    const blockedSearch = await call(3, { action: "search", query: "anything" });
+    assert.match(
+      blockedSearch.result.content[0].text,
+      /Action "search" is disabled: STREAMLINEAR_POST_ONLY is set/,
+      `search must be blocked in post-only mode: ${JSON.stringify(blockedSearch.result)}`,
+    );
+
+    const blockedGraphql = await call(4, { action: "graphql", graphql: "query { viewer { id } }" });
+    assert.match(
+      blockedGraphql.result.content[0].text,
+      /Action "graphql" is disabled: STREAMLINEAR_POST_ONLY is set/,
+      `graphql must be blocked in post-only mode: ${JSON.stringify(blockedGraphql.result)}`,
+    );
+
+    const created = await call(5, { action: "create", title: "Post-only create", team: "DEV" });
+    assert.match(
+      created.result.content[0].text,
+      /Created DEV-1/,
+      `create must still work in post-only mode: ${JSON.stringify(created.result)}`,
+    );
+
+    const helped = await call(6, { action: "help" });
+    assert.match(
+      helped.result.content[0].text,
+      /Post-only mode is active/,
+      `help must explain post-only mode: ${JSON.stringify(helped.result)}`,
+    );
+
+    const requests = readStubLog(stubLog);
+    assert.ok(
+      !requests.some((r) => r.query.includes("searchIssues")),
+      "blocked search must not reach the Linear API",
+    );
+    assert.ok(
+      !requests.some((r) => r.query.includes("issue(id:")),
+      "blocked get must not reach the Linear API",
+    );
+  } finally {
+    await cleanupSession(session, workDir);
+  }
+});
+
+test("read actions work when post-only mode is not set", async () => {
+  const { session, stubLog, workDir } = await startSession();
+
+  try {
+    const read = await session.request({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: { name: "linear", arguments: { action: "get", id: "DEV-1" } },
+    });
+
+    assert.ok(!read.error, `get failed: ${JSON.stringify(read.error ?? {})}`);
+    assert.match(
+      read.result.content[0].text,
+      /\*\*DEV-1\*\*: Test issue/,
+      `get must return issue details without the flag: ${JSON.stringify(read.result)}`,
+    );
+    assert.match(read.result.content[0].text, /Labels: bug/);
+    assert.match(read.result.content[0].text, /Recent Comments/);
   } finally {
     await cleanupSession(session, workDir);
   }
