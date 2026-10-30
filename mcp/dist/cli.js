@@ -19830,12 +19830,15 @@ async function resolveState(teamId, stateName) {
   }
   return null;
 }
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
 async function resolveAssignee(assignee) {
   if (assignee === "me") {
     const viewer = await getViewer();
     return viewer.id;
   }
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(assignee)) {
+  if (isUuid(assignee)) {
     return assignee;
   }
   const userData = await graphql(`
@@ -19948,7 +19951,11 @@ async function handleSearch(query) {
     if (query.assignee === "me") {
       filters.push(`assignee: { id: { eq: "${viewer.id}" } }`);
     } else if (query.assignee) {
-      filters.push(`assignee: { email: { eq: "${query.assignee}" } }`);
+      if (isUuid(query.assignee)) {
+        filters.push(`assignee: { id: { eq: "${query.assignee}" } }`);
+      } else {
+        filters.push(`assignee: { email: { eq: "${query.assignee}" } }`);
+      }
     }
     if (query.state) {
       filters.push(`state: { name: { eqIgnoreCase: "${query.state}" } }`);
@@ -20197,20 +20204,24 @@ AUTHENTICATION (in order of precedence):
 
 SEARCH OPTIONS:
   --state <name>           Filter by state (e.g., "In Progress")
-  --assignee <email|me>    Filter by assignee
+  --assignee <email|me|uuid>  Filter by assignee
   --priority <0-4>         Filter by priority (1=Urgent, 2=High, 3=Medium, 4=Low)
   --team <key>             Filter by team key
 
 UPDATE OPTIONS:
   --state <name>           Set state
   --priority <0-4>         Set priority
-  --assignee <email|me>    Set assignee (use "null" to unassign)
+  --assignee <email|me|uuid>  Set assignee (use "null" to unassign)
+  --labels "a,b"           Replace labels (comma-separated); --labels "" clears all labels
 
 CREATE OPTIONS:
   --title <title>          Issue title (required)
   --team <key>             Team key (required)
   --body <description>     Issue description
   --priority <0-4>         Priority level
+  --state <name>           Initial state
+  --assignee <email|me|uuid>  Initial assignee
+  --labels "a,b"           Labels (comma-separated)
 
 EXAMPLES:
   streamlinear-cli search                          # Your active issues
@@ -20219,6 +20230,7 @@ EXAMPLES:
   streamlinear-cli --token-cmd "op read 'op://vault/linear/token'" search
   streamlinear-cli get ABC-123                     # Get issue details
   streamlinear-cli update ABC-123 --state Done     # Mark as done
+  streamlinear-cli update ABC-123 --labels "bug,urgent"  # Replace labels
   streamlinear-cli comment ABC-123 "Fixed it"      # Add comment
   streamlinear-cli create --team ENG --title "Bug" # Create issue
 `);
@@ -20232,7 +20244,7 @@ function parseArgs(args) {
     if (arg.startsWith("--")) {
       const key = arg.slice(2);
       const next = args[i + 1];
-      if (next && !next.startsWith("--")) {
+      if (next !== void 0 && !next.startsWith("--")) {
         flags[key] = next;
         i++;
       } else {
@@ -20245,6 +20257,10 @@ function parseArgs(args) {
     }
   }
   return { command: command || "help", positional, flags };
+}
+function parseLabels(value) {
+  if (value === null) return void 0;
+  return value.split(",").map((label) => label.trim()).filter(Boolean);
 }
 function resolveToken(flags) {
   if (flags.token) {
@@ -20310,7 +20326,7 @@ async function main() {
         const id = positional[0];
         if (!id) {
           console.error("Error: Issue ID is required");
-          console.error("Usage: streamlinear-cli update <id> [--state <name>] [--priority <0-4>] [--assignee <email|me|null>]");
+          console.error('Usage: streamlinear-cli update <id> [--state <name>] [--priority <0-4>] [--assignee <email|me|uuid|null>] [--labels "a,b"]');
           process.exit(1);
         }
         const updates = {};
@@ -20319,9 +20335,11 @@ async function main() {
         if (flags.assignee !== void 0) {
           updates.assignee = flags.assignee === "null" ? null : flags.assignee;
         }
+        const labels = parseLabels(flags.labels);
+        if (labels !== void 0) updates.labels = labels;
         if (Object.keys(updates).length === 0) {
           console.error("Error: At least one update option is required");
-          console.error("Usage: streamlinear-cli update <id> [--state <name>] [--priority <0-4>] [--assignee <email|me|null>]");
+          console.error('Usage: streamlinear-cli update <id> [--state <name>] [--priority <0-4>] [--assignee <email|me|uuid|null>] [--labels "a,b"]');
           process.exit(1);
         }
         result = await handleUpdate(id, updates);
@@ -20343,12 +20361,16 @@ async function main() {
         const team = flags.team;
         if (!title || !team) {
           console.error("Error: --title and --team are required");
-          console.error("Usage: streamlinear-cli create --title <title> --team <key> [--body <description>] [--priority <0-4>]");
+          console.error('Usage: streamlinear-cli create --title <title> --team <key> [--body <description>] [--priority <0-4>] [--state <name>] [--assignee <email|me|uuid>] [--labels "a,b"]');
           process.exit(1);
         }
         const options = {};
         if (flags.body) options.body = flags.body;
         if (flags.priority) options.priority = parseInt(flags.priority, 10);
+        if (flags.state) options.state = flags.state;
+        if (flags.assignee) options.assignee = flags.assignee;
+        const labels = parseLabels(flags.labels);
+        if (labels && labels.length > 0) options.labels = labels;
         result = await handleCreate(title, team, options);
         break;
       }

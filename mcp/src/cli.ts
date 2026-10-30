@@ -34,20 +34,24 @@ AUTHENTICATION (in order of precedence):
 
 SEARCH OPTIONS:
   --state <name>           Filter by state (e.g., "In Progress")
-  --assignee <email|me>    Filter by assignee
+  --assignee <email|me|uuid>  Filter by assignee
   --priority <0-4>         Filter by priority (1=Urgent, 2=High, 3=Medium, 4=Low)
   --team <key>             Filter by team key
 
 UPDATE OPTIONS:
   --state <name>           Set state
   --priority <0-4>         Set priority
-  --assignee <email|me>    Set assignee (use "null" to unassign)
+  --assignee <email|me|uuid>  Set assignee (use "null" to unassign)
+  --labels "a,b"           Replace labels (comma-separated); --labels "" clears all labels
 
 CREATE OPTIONS:
   --title <title>          Issue title (required)
   --team <key>             Team key (required)
   --body <description>     Issue description
   --priority <0-4>         Priority level
+  --state <name>           Initial state
+  --assignee <email|me|uuid>  Initial assignee
+  --labels "a,b"           Labels (comma-separated)
 
 EXAMPLES:
   streamlinear-cli search                          # Your active issues
@@ -56,6 +60,7 @@ EXAMPLES:
   streamlinear-cli --token-cmd "op read 'op://vault/linear/token'" search
   streamlinear-cli get ABC-123                     # Get issue details
   streamlinear-cli update ABC-123 --state Done     # Mark as done
+  streamlinear-cli update ABC-123 --labels "bug,urgent"  # Replace labels
   streamlinear-cli comment ABC-123 "Fixed it"      # Add comment
   streamlinear-cli create --team ENG --title "Bug" # Create issue
 `);
@@ -72,7 +77,7 @@ function parseArgs(args: string[]): { command: string; positional: string[]; fla
     if (arg.startsWith("--")) {
       const key = arg.slice(2);
       const next = args[i + 1];
-      if (next && !next.startsWith("--")) {
+      if (next !== undefined && !next.startsWith("--")) {
         flags[key] = next;
         i++;
       } else {
@@ -87,6 +92,13 @@ function parseArgs(args: string[]): { command: string; positional: string[]; fla
   }
 
   return { command: command || "help", positional, flags };
+}
+
+// Split a comma-separated labels flag value. An explicit empty string means
+// "clear all labels", so it must round-trip as an empty array.
+function parseLabels(value: string | null): string[] | undefined {
+  if (value === null) return undefined;
+  return value.split(",").map((label) => label.trim()).filter(Boolean);
 }
 
 // Resolve API token from various sources
@@ -172,18 +184,20 @@ async function main(): Promise<void> {
         const id = positional[0];
         if (!id) {
           console.error("Error: Issue ID is required");
-          console.error("Usage: streamlinear-cli update <id> [--state <name>] [--priority <0-4>] [--assignee <email|me|null>]");
+          console.error("Usage: streamlinear-cli update <id> [--state <name>] [--priority <0-4>] [--assignee <email|me|uuid|null>] [--labels \"a,b\"]");
           process.exit(1);
         }
-        const updates: { state?: string; priority?: number; assignee?: string | null } = {};
+        const updates: { state?: string; priority?: number; assignee?: string | null; labels?: string[] } = {};
         if (flags.state) updates.state = flags.state;
         if (flags.priority) updates.priority = parseInt(flags.priority, 10);
         if (flags.assignee !== undefined) {
           updates.assignee = flags.assignee === "null" ? null : flags.assignee;
         }
+        const labels = parseLabels(flags.labels);
+        if (labels !== undefined) updates.labels = labels;
         if (Object.keys(updates).length === 0) {
           console.error("Error: At least one update option is required");
-          console.error("Usage: streamlinear-cli update <id> [--state <name>] [--priority <0-4>] [--assignee <email|me|null>]");
+          console.error("Usage: streamlinear-cli update <id> [--state <name>] [--priority <0-4>] [--assignee <email|me|uuid|null>] [--labels \"a,b\"]");
           process.exit(1);
         }
         result = await handleUpdate(id, updates);
@@ -207,12 +221,16 @@ async function main(): Promise<void> {
         const team = flags.team;
         if (!title || !team) {
           console.error("Error: --title and --team are required");
-          console.error("Usage: streamlinear-cli create --title <title> --team <key> [--body <description>] [--priority <0-4>]");
+          console.error("Usage: streamlinear-cli create --title <title> --team <key> [--body <description>] [--priority <0-4>] [--state <name>] [--assignee <email|me|uuid>] [--labels \"a,b\"]");
           process.exit(1);
         }
-        const options: { body?: string; priority?: number } = {};
+        const options: { body?: string; priority?: number; state?: string; assignee?: string; labels?: string[] } = {};
         if (flags.body) options.body = flags.body;
         if (flags.priority) options.priority = parseInt(flags.priority, 10);
+        if (flags.state) options.state = flags.state;
+        if (flags.assignee) options.assignee = flags.assignee;
+        const labels = parseLabels(flags.labels);
+        if (labels && labels.length > 0) options.labels = labels;
         result = await handleCreate(title, team, options);
         break;
       }
