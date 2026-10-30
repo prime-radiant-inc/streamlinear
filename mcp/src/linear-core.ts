@@ -184,6 +184,49 @@ export async function resolveTeam(input: string): Promise<Record<string, unknown
   ) || null;
 }
 
+// Cache for workspace labels
+let cachedLabels: Array<Record<string, unknown>> | null = null;
+
+export async function getWorkspaceLabels(force = false): Promise<Array<Record<string, unknown>>> {
+  if (cachedLabels && !force) return cachedLabels;
+
+  const data = await graphql(`
+    query {
+      issueLabels(first: 250) { nodes { id name } }
+    }
+  `) as { issueLabels: { nodes: Array<Record<string, unknown>> } };
+
+  cachedLabels = data.issueLabels.nodes;
+  return cachedLabels;
+}
+
+// Resolve label names to IDs, matching names case-insensitively. Refreshes the
+// cache once on a miss in case labels were created after this process started.
+export async function resolveLabels(names: string[]): Promise<{ labelIds: string[]; missing: string[] }> {
+  const collect = (labels: Array<Record<string, unknown>>) => {
+    const labelIds: string[] = [];
+    const missing: string[] = [];
+    for (const name of names) {
+      const label = labels.find((l) => (l.name as string).toLowerCase() === name.toLowerCase());
+      if (label) labelIds.push(label.id as string);
+      else missing.push(name);
+    }
+    return { labelIds, missing };
+  };
+
+  let result = collect(await getWorkspaceLabels());
+  if (result.missing.length > 0) {
+    result = collect(await getWorkspaceLabels(true));
+  }
+  return result;
+}
+
+async function labelError(missing: string[]): Promise<string> {
+  const labels = await getWorkspaceLabels();
+  const available = labels.map((l) => l.name as string).join(", ");
+  return `Label "${missing.join(", ")}" not found. Available labels: ${available}`;
+}
+
 // Action handlers
 export async function handleSearch(query?: string | Record<string, unknown>): Promise<string> {
   const viewer = await getViewer();
@@ -342,6 +385,19 @@ export async function handleUpdate(
     }
   }
 
+  if (updates.labels !== undefined) {
+    if (updates.labels.length === 0) {
+      // An empty list clears the issue's labels
+      input.labelIds = [];
+    } else {
+      const { labelIds, missing } = await resolveLabels(updates.labels);
+      if (missing.length > 0) {
+        return await labelError(missing);
+      }
+      input.labelIds = labelIds;
+    }
+  }
+
   if (Object.keys(input).length === 0) {
     return "No updates provided";
   }
@@ -350,7 +406,7 @@ export async function handleUpdate(
     mutation($id: String!, $input: IssueUpdateInput!) {
       issueUpdate(id: $id, input: $input) {
         success
-        issue { identifier title state { name } priority assignee { name } }
+        issue { identifier title state { name } priority assignee { name } labels { nodes { name } } }
       }
     }
   `, { id: existingIssue.id, input }) as { issueUpdate: { issue: Record<string, unknown> } };
@@ -361,6 +417,11 @@ export async function handleUpdate(
   if (updates.priority !== undefined) changes.push(`priority → ${priorityName(issue.priority as number)}`);
   if (updates.assignee !== undefined) {
     changes.push(`assignee → ${(issue.assignee as Record<string, unknown>)?.name || "Unassigned"}`);
+  }
+  if (updates.labels !== undefined) {
+    const labelNodes = ((issue.labels as { nodes: Array<{ name: string }> })?.nodes) || [];
+    const names = labelNodes.map((l) => l.name).join(", ");
+    changes.push(`labels → ${names || "none"}`);
   }
 
   return `Updated ${issue.identifier}: ${changes.join(", ")}`;
@@ -433,6 +494,14 @@ export async function handleCreate(
     }
   }
 
+  if (options.labels && options.labels.length > 0) {
+    const { labelIds, missing } = await resolveLabels(options.labels);
+    if (missing.length > 0) {
+      return await labelError(missing);
+    }
+    input.labelIds = labelIds;
+  }
+
   const data = await graphql(`
     mutation($input: IssueCreateInput!) {
       issueCreate(input: $input) {
@@ -464,13 +533,15 @@ export function handleHelp(): string {
 **get** - Issue details (accepts ABC-123, URLs, or UUIDs)
   {"action": "get", "id": "ABC-123"}
 
-**update** - Change state, priority, assignee
+**update** - Change state, priority, assignee, labels
   {"action": "update", "id": "ABC-123", "state": "Done"}
   {"action": "update", "id": "ABC-123", "priority": 1}
   {"action": "update", "id": "ABC-123", "assignee": "me"}
   {"action": "update", "id": "ABC-123", "assignee": "user@example.com"}
   {"action": "update", "id": "ABC-123", "assignee": "ad660447-3bc6-46c9-bec8-568c55512e79"}  → by user UUID
   {"action": "update", "id": "ABC-123", "assignee": null}  → unassign
+  {"action": "update", "id": "ABC-123", "labels": ["bug", "urgent"]}  → replace labels
+  {"action": "update", "id": "ABC-123", "labels": []}  → clear labels
 
 **comment** - Add comment to issue
   {"action": "comment", "id": "ABC-123", "body": "Fixed in abc123"}
@@ -479,6 +550,7 @@ export function handleHelp(): string {
   {"action": "create", "title": "Bug title", "team": "ENG"}
   {"action": "create", "title": "Bug", "team": "ENG", "body": "Details", "priority": 2}
   {"action": "create", "title": "Bug", "team": "ENG", "state": "Todo", "assignee": "me"}
+  {"action": "create", "title": "Bug", "team": "ENG", "labels": ["urgent"]}
 
 **graphql** - Raw GraphQL for anything else
   {"action": "graphql", "graphql": "query { projects { nodes { id name } } }"}

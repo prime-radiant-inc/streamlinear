@@ -96,27 +96,10 @@ function readStubLog(path) {
 }
 
 test("linear MCP tool works end to end over stdio", async () => {
-  const workDir = mkdtempSync(join(tmpdir(), "streamlinear-mcp-test-"));
-  const stubLog = join(workDir, "linear-stub.log");
-
-  const session = new McpSession(stubLog);
+  const { session, init, stubLog, workDir } = await startSession();
 
   try {
-    const init = await session.request({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-06-18",
-        capabilities: {},
-        clientInfo: { name: "streamlinear-test", version: "0.0.0" },
-      },
-    });
-
-    assert.ok(!init.error, `initialize failed: ${JSON.stringify(init.error ?? {})}`);
     assert.equal(init.result.serverInfo.name, "linear");
-
-    session.send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
 
     const tools = await session.request({
       jsonrpc: "2.0",
@@ -196,5 +179,118 @@ test("linear MCP tool works end to end over stdio", async () => {
   } finally {
     await session.stop();
     rmSync(workDir, { recursive: true, force: true });
+  }
+});
+
+async function startSession() {
+  const workDir = mkdtempSync(join(tmpdir(), "streamlinear-mcp-test-"));
+  const stubLog = join(workDir, "linear-stub.log");
+  const session = new McpSession(stubLog);
+
+  const init = await session.request({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "streamlinear-test", version: "0.0.0" },
+    },
+  });
+  assert.ok(!init.error, `initialize failed: ${JSON.stringify(init.error ?? {})}`);
+  session.send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
+
+  return { session, init, stubLog, workDir };
+}
+
+function cleanupSession(session, workDir) {
+  return session.stop().finally(() => rmSync(workDir, { recursive: true, force: true }));
+}
+
+test("labels reach the create and update mutations", async () => {
+  const { session, stubLog, workDir } = await startSession();
+
+  try {
+    const call = (id, arguments_) =>
+      session.request({
+        jsonrpc: "2.0",
+        id,
+        method: "tools/call",
+        params: { name: "linear", arguments: arguments_ },
+      });
+
+    const created = await call(2, {
+      action: "create",
+      title: "Labeled issue",
+      team: "DEV",
+      labels: ["bug", "urgent"],
+    });
+    assert.ok(!created.error, `create failed: ${JSON.stringify(created.error ?? {})}`);
+    assert.match(created.result.content[0].text, /Created DEV-1/);
+
+    const relabeled = await call(3, { action: "update", id: "DEV-1", labels: ["docs"] });
+    assert.ok(!relabeled.error, `update failed: ${JSON.stringify(relabeled.error ?? {})}`);
+    assert.match(
+      relabeled.result.content[0].text,
+      /Updated DEV-1: labels → docs/,
+      `labels-only update did not apply: ${JSON.stringify(relabeled.result)}`,
+    );
+
+    const cleared = await call(4, { action: "update", id: "DEV-1", labels: [] });
+    assert.ok(!cleared.error, `clear failed: ${JSON.stringify(cleared.error ?? {})}`);
+    assert.match(
+      cleared.result.content[0].text,
+      /Updated DEV-1: labels → none/,
+      `clearing labels did not apply: ${JSON.stringify(cleared.result)}`,
+    );
+
+    const requests = readStubLog(stubLog);
+    const createRequest = requests.find((r) => r.query.includes("issueCreate"));
+    assert.ok(createRequest, "no issueCreate mutation reached the stubbed API");
+    assert.deepEqual(
+      createRequest.variables.input.labelIds,
+      ["label-bug", "label-urgent"],
+      "create must resolve label names to label IDs",
+    );
+
+    const updateRequests = requests.filter((r) => r.query.includes("issueUpdate"));
+    assert.equal(updateRequests.length, 2, "labels-only updates must reach issueUpdate");
+    assert.deepEqual(
+      updateRequests[0].variables.input.labelIds,
+      ["label-docs"],
+      "update must send the resolved label IDs",
+    );
+    assert.deepEqual(
+      updateRequests[1].variables.input.labelIds,
+      [],
+      "an empty labels list must be sent to clear labels",
+    );
+  } finally {
+    await cleanupSession(session, workDir);
+  }
+});
+
+test("unknown label names produce an actionable error", async () => {
+  const { session, workDir } = await startSession();
+
+  try {
+    const failed = await session.request({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: {
+        name: "linear",
+        arguments: { action: "create", title: "Mislabeled", team: "DEV", labels: ["nope"] },
+      },
+    });
+
+    assert.ok(!failed.error, `tools/call failed: ${JSON.stringify(failed.error ?? {})}`);
+    assert.match(
+      failed.result.content[0].text,
+      /Label "nope" not found\. Available labels: bug, urgent, docs/,
+      `unknown label should name the missing label and the options: ${JSON.stringify(failed.result)}`,
+    );
+  } finally {
+    await cleanupSession(session, workDir);
   }
 });

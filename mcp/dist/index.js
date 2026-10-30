@@ -4401,7 +4401,7 @@ var require_core = __commonJS({
       constructor(opts = {}) {
         this.schemas = {};
         this.refs = {};
-        this.formats = {};
+        this.formats = /* @__PURE__ */ Object.create(null);
         this._compilations = /* @__PURE__ */ new Set();
         this._loading = {};
         this._cache = /* @__PURE__ */ new Map();
@@ -5182,6 +5182,7 @@ var require_pattern = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     var code_1 = require_code2();
+    var util_1 = require_util();
     var codegen_1 = require_codegen();
     var error62 = {
       message: ({ schemaCode }) => (0, codegen_1.str)`must match pattern "${schemaCode}"`,
@@ -5194,10 +5195,18 @@ var require_pattern = __commonJS({
       $data: true,
       error: error62,
       code(cxt) {
-        const { data, $data, schema, schemaCode, it } = cxt;
+        const { gen, data, $data, schema, schemaCode, it } = cxt;
         const u = it.opts.unicodeRegExp ? "u" : "";
-        const regExp = $data ? (0, codegen_1._)`(new RegExp(${schemaCode}, ${u}))` : (0, code_1.usePattern)(cxt, schema);
-        cxt.fail$data((0, codegen_1._)`!${regExp}.test(${data})`);
+        if ($data) {
+          const { regExp } = it.opts.code;
+          const regExpCode = regExp.code === "new RegExp" ? (0, codegen_1._)`new RegExp` : (0, util_1.useFunc)(gen, regExp);
+          const valid = gen.let("valid");
+          gen.try(() => gen.assign(valid, (0, codegen_1._)`${regExpCode}(${schemaCode}, ${u}).test(${data})`), () => gen.assign(valid, false));
+          cxt.fail$data((0, codegen_1._)`!${valid}`);
+        } else {
+          const regExp = (0, code_1.usePattern)(cxt, schema);
+          cxt.fail$data((0, codegen_1._)`!${regExp}.test(${data})`);
+        }
       }
     };
     exports.default = def;
@@ -36761,6 +36770,39 @@ async function resolveTeam(input2) {
     (t) => t.key.toLowerCase() === lower || t.name.toLowerCase() === lower
   ) || null;
 }
+var cachedLabels = null;
+async function getWorkspaceLabels(force = false) {
+  if (cachedLabels && !force) return cachedLabels;
+  const data = await graphql(`
+    query {
+      issueLabels(first: 250) { nodes { id name } }
+    }
+  `);
+  cachedLabels = data.issueLabels.nodes;
+  return cachedLabels;
+}
+async function resolveLabels(names) {
+  const collect = (labels) => {
+    const labelIds = [];
+    const missing = [];
+    for (const name of names) {
+      const label = labels.find((l) => l.name.toLowerCase() === name.toLowerCase());
+      if (label) labelIds.push(label.id);
+      else missing.push(name);
+    }
+    return { labelIds, missing };
+  };
+  let result = collect(await getWorkspaceLabels());
+  if (result.missing.length > 0) {
+    result = collect(await getWorkspaceLabels(true));
+  }
+  return result;
+}
+async function labelError(missing) {
+  const labels = await getWorkspaceLabels();
+  const available = labels.map((l) => l.name).join(", ");
+  return `Label "${missing.join(", ")}" not found. Available labels: ${available}`;
+}
 async function handleSearch(query) {
   const viewer = await getViewer();
   let filter = "";
@@ -36881,6 +36923,17 @@ async function handleUpdate(id, updates) {
       }
     }
   }
+  if (updates.labels !== void 0) {
+    if (updates.labels.length === 0) {
+      input2.labelIds = [];
+    } else {
+      const { labelIds, missing } = await resolveLabels(updates.labels);
+      if (missing.length > 0) {
+        return await labelError(missing);
+      }
+      input2.labelIds = labelIds;
+    }
+  }
   if (Object.keys(input2).length === 0) {
     return "No updates provided";
   }
@@ -36888,7 +36941,7 @@ async function handleUpdate(id, updates) {
     mutation($id: String!, $input: IssueUpdateInput!) {
       issueUpdate(id: $id, input: $input) {
         success
-        issue { identifier title state { name } priority assignee { name } }
+        issue { identifier title state { name } priority assignee { name } labels { nodes { name } } }
       }
     }
   `, { id: existingIssue.id, input: input2 });
@@ -36898,6 +36951,11 @@ async function handleUpdate(id, updates) {
   if (updates.priority !== void 0) changes.push(`priority \u2192 ${priorityName(issue2.priority)}`);
   if (updates.assignee !== void 0) {
     changes.push(`assignee \u2192 ${issue2.assignee?.name || "Unassigned"}`);
+  }
+  if (updates.labels !== void 0) {
+    const labelNodes = issue2.labels?.nodes || [];
+    const names = labelNodes.map((l) => l.name).join(", ");
+    changes.push(`labels \u2192 ${names || "none"}`);
   }
   return `Updated ${issue2.identifier}: ${changes.join(", ")}`;
 }
@@ -36952,6 +37010,13 @@ async function handleCreate(title, team, options) {
       return `Could not find user with email "${options.assignee}"`;
     }
   }
+  if (options.labels && options.labels.length > 0) {
+    const { labelIds, missing } = await resolveLabels(options.labels);
+    if (missing.length > 0) {
+      return await labelError(missing);
+    }
+    input2.labelIds = labelIds;
+  }
   const data = await graphql(`
     mutation($input: IssueCreateInput!) {
       issueCreate(input: $input) {
@@ -36981,13 +37046,15 @@ function handleHelp() {
 **get** - Issue details (accepts ABC-123, URLs, or UUIDs)
   {"action": "get", "id": "ABC-123"}
 
-**update** - Change state, priority, assignee
+**update** - Change state, priority, assignee, labels
   {"action": "update", "id": "ABC-123", "state": "Done"}
   {"action": "update", "id": "ABC-123", "priority": 1}
   {"action": "update", "id": "ABC-123", "assignee": "me"}
   {"action": "update", "id": "ABC-123", "assignee": "user@example.com"}
   {"action": "update", "id": "ABC-123", "assignee": "ad660447-3bc6-46c9-bec8-568c55512e79"}  \u2192 by user UUID
   {"action": "update", "id": "ABC-123", "assignee": null}  \u2192 unassign
+  {"action": "update", "id": "ABC-123", "labels": ["bug", "urgent"]}  \u2192 replace labels
+  {"action": "update", "id": "ABC-123", "labels": []}  \u2192 clear labels
 
 **comment** - Add comment to issue
   {"action": "comment", "id": "ABC-123", "body": "Fixed in abc123"}
@@ -36996,6 +37063,7 @@ function handleHelp() {
   {"action": "create", "title": "Bug title", "team": "ENG"}
   {"action": "create", "title": "Bug", "team": "ENG", "body": "Details", "priority": 2}
   {"action": "create", "title": "Bug", "team": "ENG", "state": "Todo", "assignee": "me"}
+  {"action": "create", "title": "Bug", "team": "ENG", "labels": ["urgent"]}
 
 **graphql** - Raw GraphQL for anything else
   {"action": "graphql", "graphql": "query { projects { nodes { id name } } }"}
