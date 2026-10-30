@@ -95,9 +95,10 @@ function parseArgs(args: string[]): { command: string; positional: string[]; fla
 }
 
 // Split a comma-separated labels flag value. An explicit empty string means
-// "clear all labels", so it must round-trip as an empty array.
-function parseLabels(value: string | null): string[] | undefined {
-  if (value === null) return undefined;
+// "clear all labels", so it must round-trip as an empty array; a missing
+// flag means no labels at all.
+function parseLabels(value: string | null | undefined): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
   return value.split(",").map((label) => label.trim()).filter(Boolean);
 }
 

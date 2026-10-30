@@ -117,3 +117,27 @@ test("CLI search accepts a UUID assignee", () => {
     rmSync(workDir, { recursive: true, force: true });
   }
 });
+
+test("CLI create and update work without --labels", () => {
+  const create = withStubLog();
+  const update = withStubLog();
+
+  try {
+    const created = runCli(["create", "--title", "No labels", "--team", "DEV"], create.stubLog);
+    assert.equal(created.status, 0, `create without labels failed: ${created.stderr}`);
+    assert.match(created.stdout, /Created DEV-1/);
+    const createRequest = readStubLog(create.stubLog).find((r) => r.query.includes("issueCreate"));
+    assert.ok(createRequest, "no issueCreate mutation reached the stubbed API");
+    assert.equal(createRequest.variables.input.labelIds, undefined);
+
+    const updated = runCli(["update", "DEV-1", "--state", "Done"], update.stubLog);
+    assert.equal(updated.status, 0, `update without labels failed: ${updated.stderr}`);
+    assert.match(updated.stdout, /Updated DEV-1: state → Done/);
+    const updateRequest = readStubLog(update.stubLog).find((r) => r.query.includes("issueUpdate"));
+    assert.ok(updateRequest, "no issueUpdate mutation reached the stubbed API");
+    assert.equal(updateRequest.variables.input.labelIds, undefined);
+  } finally {
+    rmSync(create.workDir, { recursive: true, force: true });
+    rmSync(update.workDir, { recursive: true, force: true });
+  }
+});

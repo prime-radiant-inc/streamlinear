@@ -20259,7 +20259,7 @@ function parseArgs(args) {
   return { command: command || "help", positional, flags };
 }
 function parseLabels(value) {
-  if (value === null) return void 0;
+  if (value === void 0 || value === null) return void 0;
   return value.split(",").map((label) => label.trim()).filter(Boolean);
 }
 function resolveToken(flags) {
