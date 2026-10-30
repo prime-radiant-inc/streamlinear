@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.1 - 2026-10-30
+
+- Added labels, state, and assignee options to streamlinear-cli's create and
+  update commands, matching the MCP tool: assignee accepts an email, me, or
+  a user UUID; labels are comma-separated; an empty --labels value clears
+  all labels on update.
+- Made the search assignee filter accept UUIDs, so assignee means the same
+  thing across every action.
+- Fixed a crash in the CLI's create and update when no --labels flag was
+  passed.
+- Fixed npm run build on Windows by building through a Node script that
+  calls esbuild's API, with no shell argument quoting.
+
 ## 1.2.0 - 2026-10-30
 
 - Wired the labels parameter into create and update: label names resolve
