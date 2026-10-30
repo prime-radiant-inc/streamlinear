@@ -15,6 +15,16 @@ export function setApiToken(token: string): void {
   apiToken = token;
 }
 
+// Post-only mode: when STREAMLINEAR_POST_ONLY is set, the server refuses the
+// read actions (search, get, graphql) so an agent can create and update
+// issues without being able to read issue content. Internal lookups (teams,
+// states, users, labels) still happen; they expose company data, not issue
+// content.
+export function isPostOnly(): boolean {
+  const value = process.env.STREAMLINEAR_POST_ONLY;
+  return value === "1" || (value !== undefined && value.toLowerCase() === "true");
+}
+
 // GraphQL helper
 export async function graphql(query: string, variables: Record<string, unknown> = {}): Promise<unknown> {
   const token = getApiToken();
@@ -521,7 +531,7 @@ export async function handleGraphql(query: string, variables?: Record<string, un
 }
 
 export function handleHelp(): string {
-  return `# Linear MCP
+  const base = `# Linear MCP
 
 ## Actions
 
@@ -566,6 +576,10 @@ Search default: your issues, excluding completed/canceled
 State matching is fuzzy: "done" → "Done", "in prog" → "In Progress"
 
 IDs accept: ABC-123, linear.app URLs, or UUIDs`;
+
+  return isPostOnly()
+    ? `${base}\n\nPost-only mode is active (STREAMLINEAR_POST_ONLY): search, get, and graphql are disabled.`
+    : base;
 }
 
 // Tool parameter schema
@@ -609,11 +623,18 @@ ${teamLines.join("\n")}
 {"action": "get", "id": "ABC-123"} → issue details
 {"action": "update", "id": "ABC-123", "state": "Done"}
 {"action": "create", "title": "Title", "team": "${teams[0]?.key || 'KEY'}"}
-{"action": "help"} → full documentation`;
+{"action": "help"} → full documentation${isPostOnly() ? "\n\nPost-only mode (STREAMLINEAR_POST_ONLY) is active: search, get, and graphql are disabled." : ""}`;
 }
+
+// Actions refused in post-only mode because they can read issue content
+const POST_ONLY_BLOCKED_ACTIONS = new Set(["search", "get", "graphql"]);
 
 // Dispatch action based on params
 export async function dispatchAction(params: LinearParamsType): Promise<string> {
+  if (isPostOnly() && POST_ONLY_BLOCKED_ACTIONS.has(params.action)) {
+    return `Action "${params.action}" is disabled: STREAMLINEAR_POST_ONLY is set, so this server only allows create, update, comment, and help.`;
+  }
+
   switch (params.action) {
     case "search":
       return await handleSearch(params.query);
