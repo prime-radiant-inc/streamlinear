@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.0 - 2026-10-30
+
+- Wired the labels parameter into create and update: label names resolve
+  against the workspace label list, an empty list clears labels on update,
+  and unknown labels return an error listing the available options.
+- Honored state and assignee on create, and UUID assignees on update (#5, #6).
+- Added post-only mode: setting STREAMLINEAR_POST_ONLY disables search, get,
+  and graphql so agents can create and update issues without ever reading
+  issue content (#11).
+- Converted @name mentions in create descriptions and comment bodies into
+  Linear profile links when they match exactly one workspace user (#1).
+- Refreshed dependencies across the board, including zod 4 and
+  @modelcontextprotocol/sdk 1.32, clearing every open Dependabot security
+  advisory in the process.
+- Added an end-to-end test suite that drives the built MCP server over stdio
+  against a stubbed Linear API, covering create, update, get, labels,
+  post-only mode, and mention conversion through the real tool surface.
+
 ## 1.1.3 - 2026-05-08
 
 - Reissued the npm package from the corrected OIDC trusted-publishing workflow
