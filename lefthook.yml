@@ -1,5 +1,9 @@
 pre-commit:
   commands:
     streamlinear-check:
-      glob: "{package.json,package-lock.json,mcp/package.json,mcp/package-lock.json,mcp/tsconfig.json,mcp/src/**/*.ts,mcp/test/**/*.mjs,scripts/**/*.mjs,lefthook.yml,.github/workflows/*.yml}"
+      # ** does not match files directly inside a directory in lefthook's
+      # matcher, so direct children (mcp/src/cli.ts, mcp/test/cli.test.mjs,
+      # scripts/*.mjs, mcp/scripts/*.mjs, mcp/dist/*.js) need explicit
+      # entries alongside the nested patterns.
+      glob: "{package.json,package-lock.json,mcp/package.json,mcp/package-lock.json,mcp/tsconfig.json,mcp/src/*.ts,mcp/src/**/*.ts,mcp/test/*.mjs,mcp/test/**/*.mjs,mcp/scripts/*.mjs,mcp/scripts/**/*.mjs,mcp/dist/*.js,mcp/dist/**/*.js,scripts/*.mjs,scripts/**/*.mjs,lefthook.yml,.github/workflows/*.yml}"
       run: npm run check
