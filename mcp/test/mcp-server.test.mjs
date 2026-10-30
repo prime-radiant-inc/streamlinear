@@ -399,3 +399,48 @@ test("read actions work when post-only mode is not set", async () => {
     await cleanupSession(session, workDir);
   }
 });
+
+test("converts @mentions to profile links in create and comments", async () => {
+  const { session, stubLog, workDir } = await startSession();
+
+  try {
+    const call = (id, arguments_) =>
+      session.request({
+        jsonrpc: "2.0",
+        id,
+        method: "tools/call",
+        params: { name: "linear", arguments: arguments_ },
+      });
+
+    const created = await call(2, {
+      action: "create",
+      title: "Mention test",
+      team: "DEV",
+      body: "Hey @ada please review, also ping @nobody and @chris",
+    });
+    assert.ok(!created.error, `create failed: ${JSON.stringify(created.error ?? {})}`);
+    assert.match(created.result.content[0].text, /Created DEV-1/);
+
+    const commented = await call(3, { action: "comment", id: "DEV-1", body: "cc @viewer" });
+    assert.ok(!commented.error, `comment failed: ${JSON.stringify(commented.error ?? {})}`);
+
+    const requests = readStubLog(stubLog);
+    const createRequest = requests.find((r) => r.query.includes("issueCreate"));
+    assert.ok(createRequest, "no issueCreate mutation reached the stubbed API");
+    assert.equal(
+      createRequest.variables.input.description,
+      "Hey [@ada](https://linear.app/test/profiles/ada) please review, also ping @nobody and @chris",
+      "known unambiguous mentions must convert, unknown and ambiguous ones must stay untouched",
+    );
+
+    const commentRequest = requests.find((r) => r.query.includes("commentCreate"));
+    assert.ok(commentRequest, "no commentCreate mutation reached the stubbed API");
+    assert.equal(
+      commentRequest.variables.body,
+      "cc [@viewer](https://linear.app/test/profiles/viewer)",
+      "mentions in comment bodies must convert",
+    );
+  } finally {
+    await cleanupSession(session, workDir);
+  }
+});

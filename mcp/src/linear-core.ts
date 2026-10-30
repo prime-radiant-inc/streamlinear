@@ -237,6 +237,62 @@ async function labelError(missing: string[]): Promise<string> {
   return `Label "${missing.join(", ")}" not found. Available labels: ${available}`;
 }
 
+// Cache for workspace users with profile URLs (mention conversion)
+let cachedUsers: Array<Record<string, unknown>> | null = null;
+
+export async function getWorkspaceUsers(force = false): Promise<Array<Record<string, unknown>>> {
+  if (cachedUsers && !force) return cachedUsers;
+
+  const data = await graphql(`
+    query { users(first: 250) { nodes { id name email url } } }
+  `) as { users: { nodes: Array<Record<string, unknown>> } };
+
+  cachedUsers = data.users.nodes;
+  return cachedUsers;
+}
+
+// Convert @name mentions into Linear profile links so Linear renders them.
+// A mention converts only when it maps to exactly one workspace user, by first
+// name, full name with whitespace removed, or email local part
+// (case-insensitive); unknown and ambiguous mentions are left untouched.
+export async function convertMentions(text: string): Promise<string> {
+  const users = await getWorkspaceUsers();
+
+  const links = new Map<string, string>();
+  for (const user of users) {
+    const url = user.url as string | undefined;
+    if (!url) continue;
+
+    const keys = new Set<string>();
+    const name = ((user.name as string) || "").toLowerCase();
+    if (name) {
+      keys.add(name.replace(/\s+/g, ""));
+      const first = name.split(/\s+/)[0];
+      if (first) keys.add(first);
+    }
+    const email = ((user.email as string) || "").toLowerCase();
+    if (email) {
+      const local = email.split("@")[0];
+      if (local) keys.add(local);
+    }
+
+    for (const key of keys) {
+      const existing = links.get(key);
+      // An empty value marks an ambiguous key: two users, one spelling.
+      if (existing !== undefined && existing !== url) {
+        links.set(key, "");
+      } else {
+        links.set(key, url);
+      }
+    }
+  }
+
+  return text.replace(/(?<![\w@])@([\w][\w.-]*)/g, (match, token: string) => {
+    const url = links.get(token.toLowerCase());
+    return url ? `[@${token}](${url})` : match;
+  });
+}
+
 // Action handlers
 export async function handleSearch(query?: string | Record<string, unknown>): Promise<string> {
   const viewer = await getViewer();
@@ -451,15 +507,17 @@ export async function handleComment(id: string, body: string): Promise<string> {
     return `Issue ${id} not found`;
   }
 
+  const convertedBody = await convertMentions(body);
+
   await graphql(`
     mutation($issueId: String!, $body: String!) {
       commentCreate(input: { issueId: $issueId, body: $body }) {
         success
       }
     }
-  `, { issueId: issueData.issue.id, body });
+  `, { issueId: issueData.issue.id, body: convertedBody });
 
-  const truncated = body.length > 100 ? body.slice(0, 100) + "..." : body;
+  const truncated = convertedBody.length > 100 ? convertedBody.slice(0, 100) + "..." : convertedBody;
   return `Added comment to ${issueData.issue.identifier}:\n> ${truncated}`;
 }
 
@@ -480,7 +538,7 @@ export async function handleCreate(
     teamId: teamData.id,
   };
 
-  if (options.body) input.description = options.body;
+  if (options.body) input.description = await convertMentions(options.body);
   if (options.priority !== undefined) input.priority = options.priority;
 
   if (options.state) {
@@ -574,6 +632,8 @@ Query filters: {assignee: "me"|email, state: "name", priority: 0-4, team: "KEY"}
 Search default: your issues, excluding completed/canceled
 
 State matching is fuzzy: "done" → "Done", "in prog" → "In Progress"
+
+Mentions: @name in create descriptions and comment bodies becomes a profile link when it matches exactly one workspace user
 
 IDs accept: ABC-123, linear.app URLs, or UUIDs`;
 
