@@ -19853,6 +19853,39 @@ async function resolveTeam(input2) {
     (t) => t.key.toLowerCase() === lower || t.name.toLowerCase() === lower
   ) || null;
 }
+var cachedLabels = null;
+async function getWorkspaceLabels(force = false) {
+  if (cachedLabels && !force) return cachedLabels;
+  const data = await graphql(`
+    query {
+      issueLabels(first: 250) { nodes { id name } }
+    }
+  `);
+  cachedLabels = data.issueLabels.nodes;
+  return cachedLabels;
+}
+async function resolveLabels(names) {
+  const collect = (labels) => {
+    const labelIds = [];
+    const missing = [];
+    for (const name of names) {
+      const label = labels.find((l) => l.name.toLowerCase() === name.toLowerCase());
+      if (label) labelIds.push(label.id);
+      else missing.push(name);
+    }
+    return { labelIds, missing };
+  };
+  let result = collect(await getWorkspaceLabels());
+  if (result.missing.length > 0) {
+    result = collect(await getWorkspaceLabels(true));
+  }
+  return result;
+}
+async function labelError(missing) {
+  const labels = await getWorkspaceLabels();
+  const available = labels.map((l) => l.name).join(", ");
+  return `Label "${missing.join(", ")}" not found. Available labels: ${available}`;
+}
 async function handleSearch(query) {
   const viewer = await getViewer();
   let filter = "";
@@ -19973,6 +20006,17 @@ async function handleUpdate(id, updates) {
       }
     }
   }
+  if (updates.labels !== void 0) {
+    if (updates.labels.length === 0) {
+      input2.labelIds = [];
+    } else {
+      const { labelIds, missing } = await resolveLabels(updates.labels);
+      if (missing.length > 0) {
+        return await labelError(missing);
+      }
+      input2.labelIds = labelIds;
+    }
+  }
   if (Object.keys(input2).length === 0) {
     return "No updates provided";
   }
@@ -19980,7 +20024,7 @@ async function handleUpdate(id, updates) {
     mutation($id: String!, $input: IssueUpdateInput!) {
       issueUpdate(id: $id, input: $input) {
         success
-        issue { identifier title state { name } priority assignee { name } }
+        issue { identifier title state { name } priority assignee { name } labels { nodes { name } } }
       }
     }
   `, { id: existingIssue.id, input: input2 });
@@ -19990,6 +20034,11 @@ async function handleUpdate(id, updates) {
   if (updates.priority !== void 0) changes.push(`priority \u2192 ${priorityName(issue2.priority)}`);
   if (updates.assignee !== void 0) {
     changes.push(`assignee \u2192 ${issue2.assignee?.name || "Unassigned"}`);
+  }
+  if (updates.labels !== void 0) {
+    const labelNodes = issue2.labels?.nodes || [];
+    const names = labelNodes.map((l) => l.name).join(", ");
+    changes.push(`labels \u2192 ${names || "none"}`);
   }
   return `Updated ${issue2.identifier}: ${changes.join(", ")}`;
 }
@@ -20043,6 +20092,13 @@ async function handleCreate(title, team, options) {
     } else {
       return `Could not find user with email "${options.assignee}"`;
     }
+  }
+  if (options.labels && options.labels.length > 0) {
+    const { labelIds, missing } = await resolveLabels(options.labels);
+    if (missing.length > 0) {
+      return await labelError(missing);
+    }
+    input2.labelIds = labelIds;
   }
   const data = await graphql(`
     mutation($input: IssueCreateInput!) {

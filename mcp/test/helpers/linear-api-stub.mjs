@@ -27,6 +27,18 @@ const USERS = [
   { id: "user-viewer", email: "viewer@example.com" },
 ];
 
+const LABELS = [
+  { id: "label-bug", name: "bug" },
+  { id: "label-urgent", name: "urgent" },
+  { id: "label-docs", name: "docs" },
+];
+
+const labelsById = new Map(LABELS.map((label) => [label.id, label]));
+
+function labelNodes(labelIds) {
+  return (labelIds || []).map((id) => labelsById.get(id)).filter(Boolean);
+}
+
 function respond(body) {
   return { ok: true, status: 200, json: async () => body };
 }
@@ -58,6 +70,10 @@ globalThis.fetch = async (_url, init) => {
     return respond({ data: { searchIssues: { nodes: [] } } });
   }
 
+  if (query.includes("issueLabels")) {
+    return respond({ data: { issueLabels: { nodes: LABELS } } });
+  }
+
   if (query.includes("issueCreate")) {
     const input = variables.input || {};
     return respond({
@@ -86,9 +102,8 @@ globalThis.fetch = async (_url, init) => {
             state: { name: "Done" },
             priority: 2,
             assignee: { name: "Ada Lovelace" },
-            labels: { nodes: [] },
+            labels: { nodes: labelNodes(input.labelIds) },
           },
-          ...input,
         },
       },
     });
